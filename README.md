@@ -88,7 +88,17 @@ dist/                 本地发行包（不随仓库分发）
 venv-win/             本地 Python 虚拟环境（不随仓库分发）
 ```
 
-### 6. 许可与素材边界
+### 6. 运行时保留策略
+
+每个发行版会按 EXE 哈希冻结一个 `.runtime-<SHA>`，防止 EXE 与 Python companion 混版；旧 runtime 只用于回滚，不是缓存。建议只保留“当前 + 上一个版本”：
+
+1. 把较旧的 `dist/archive/release-*` 移入你的待删除/归档区；
+2. 在仓库根运行 `python -B scripts/companion_runtime.py --prune --keep 2`；
+3. `dist/` 中不再被当前/上一版引用的旧 `.runtime-*` 也移入归档区。
+
+不要移走 `dist/H3TierExport-release.json` 当前绑定的 `.runtime-<SHA>`，否则 companion 功能会报找不到运行负载。
+
+### 7. 许可与素材边界
 
 - 本项目原创代码采用 **MIT**。
 - `providers/h3-art-pipeline/upstream` 来自 `yzh119/h3-art-pipeline`，采用 **GPL-2.0-or-later**，作为独立子进程使用，不并入 MIT 内核；分发该目录时必须遵守 GPL。
@@ -175,7 +185,17 @@ dist/                Local release package (not distributed)
 venv-win/            Local Python virtual environment (not distributed)
 ```
 
-### 6. License and asset boundary
+### 6. Runtime retention
+
+Each release freezes one `.runtime-<SHA>` directory because the EXE embeds the runtime manifest hash. Old runtimes are rollback data, not cache. Keep only the current and previous release:
+
+1. Move older `dist/archive/release-*` directories to your review/archive area.
+2. From the repository root run `python -B scripts/companion_runtime.py --prune --keep 2`.
+3. Move old `dist/.runtime-*` copies that are no longer referenced by the current or previous release to the archive area.
+
+Do not remove the `.runtime-<SHA>` referenced by the current `dist/H3TierExport-release.json`; companion commands will fail with a missing-runtime error.
+
+### 7. License and asset boundary
 
 - Original project code: **MIT**.
 - `providers/h3-art-pipeline/upstream` is from `yzh119/h3-art-pipeline` and is **GPL-2.0-or-later**. It runs as a separate subprocess and is not merged into the MIT core; redistributing that directory requires GPL compliance.
