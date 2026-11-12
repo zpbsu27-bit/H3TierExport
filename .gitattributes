@@ -1,0 +1,5 @@
+# Preserve upstream vendor bytes qualified by third_party/provenance.json.
+/third_party/LICENSE.MIT -text -whitespace
+/third_party/provenance.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+# The provider verifies original upstream bytes and the full lock-file digest.
+/providers/h3-art-pipeline/** -text -whitespace

@@ -1,0 +1,768 @@
+{
+  "schema": "h3tierexport.upstream-source-lock.v1",
+  "repository": "https://github.com/yzh119/h3-art-pipeline",
+  "commit": "726856e58e1f219a897823c24616f158f016a103",
+  "license": "GPL-2.0-or-later",
+  "files": [
+    {
+      "path": ".gitignore",
+      "bytes": 106,
+      "sha256": "5ad7ba39099d3db2767b4f66e7f46494bb7457f3927e9c4c2cf16cb5e0280076"
+    },
+    {
+      "path": "AGENTS.md",
+      "bytes": 1682,
+      "sha256": "1f618ee7b4650e829dce027f5bb281dd7a67f560aa2c354483364429b6b738e4"
+    },
+    {
+      "path": "creature-art/assemble_mod.py",
+      "bytes": 4749,
+      "sha256": "d8aaff12efdfeceb0e794297dd766e29f1d68ca086f4f92f9c937549d3b14800"
+    },
+    {
+      "path": "creature-art/assemble_vampire.py",
+      "bytes": 4769,
+      "sha256": "dc4bf9235cbe5857d204fede9509e501c8393a2af5bb8e2f222e33463e1df24c"
+    },
+    {
+      "path": "creature-art/bake_effects.cpp",
+      "bytes": 3497,
+      "sha256": "4f97497c1e2dbaa875acc39ab942883aa2a496888ae9f3ba8b3404bc8a1e0f8f"
+    },
+    {
+      "path": "creature-art/bat_study.py",
+      "bytes": 5874,
+      "sha256": "d0efedbda9e9d332f7d0f028385b7cfec1f752cef8b94a8777add201682ac771"
+    },
+    {
+      "path": "creature-art/blend_armature_volume.py",
+      "bytes": 1357,
+      "sha256": "edf97d79676a9d160ff666e198f654910ab2d8851d5419126f85202b550671af"
+    },
+    {
+      "path": "creature-art/bootstrap_bind.py",
+      "bytes": 4608,
+      "sha256": "29a42cb82de8fc20660abbb58bdbc81b2b755ce9295471d57b004d16edc79c1b"
+    },
+    {
+      "path": "creature-art/bootstrap_material_still.py",
+      "bytes": 2328,
+      "sha256": "18dc6471791533d7665fb3d04e560ef357a34f462cec580dfe497a4dafdac3ce"
+    },
+    {
+      "path": "creature-art/bootstrap_portrait.py",
+      "bytes": 3270,
+      "sha256": "1a5777bf12d72fba2cfd59de29e3f33a9cb5ce5df00966cceda67b3b72d9d221"
+    },
+    {
+      "path": "creature-art/bootstrap_review.py",
+      "bytes": 5971,
+      "sha256": "a3214992e271c2407b283f14f164c10834b6ea0e5d3ef8227b0c5420e1530635"
+    },
+    {
+      "path": "creature-art/bootstrap_showcase.py",
+      "bytes": 2091,
+      "sha256": "15c0e1e8c12655ff04992c3e2bc60636b5cf582b612a04dc36ab9161553a835d"
+    },
+    {
+      "path": "creature-art/build_joint_colliders.py",
+      "bytes": 5934,
+      "sha256": "b727ee6fc5708daec6fa9e05b52fac5e5e9ab476751d471bbc0fa4474e5d197a"
+    },
+    {
+      "path": "creature-art/cache_creature_scale.py",
+      "bytes": 1371,
+      "sha256": "473ed13085ab7cf308174b441edab0f85a0e4bdbfeed84b352cce2f2968eb58c"
+    },
+    {
+      "path": "creature-art/check_nonhumanoid_motion.py",
+      "bytes": 2443,
+      "sha256": "3a347baa1a47d1a7d9ca89bcdef2e991bc05c0f7142fd320f821156ffd1ca56b"
+    },
+    {
+      "path": "creature-art/check_shape_key_isolation.py",
+      "bytes": 3773,
+      "sha256": "4600775bf310da2b79b3cb167c5b1d64b4ad0a4d5b5bb9d21795265409a3e0f2"
+    },
+    {
+      "path": "creature-art/check_skin.py",
+      "bytes": 2769,
+      "sha256": "448e08e10a0447256a02391c893d2af2a9e7aaaac7c87b999b25d390c71a4c94"
+    },
+    {
+      "path": "creature-art/def_extract.py",
+      "bytes": 13223,
+      "sha256": "488c80e3e5a141f81e130ed8758c974b6dbc49231429e0b75aa54ceca135b941"
+    },
+    {
+      "path": "creature-art/docs/asset-generation-survey.md",
+      "bytes": 12739,
+      "sha256": "72f8af4fce57e60a88441050b9ce1dc7dca67f96089127c76f84a623ac9b2cd2"
+    },
+    {
+      "path": "creature-art/docs/battle-installation.md",
+      "bytes": 13284,
+      "sha256": "58870434bd36b08555da323166544ba5da219c336c5858fb732986a0faf255bf"
+    },
+    {
+      "path": "creature-art/docs/brief-cskele.md",
+      "bytes": 5871,
+      "sha256": "161e8c7b966186ccc11ac06ddae8f09445555139bb007a08c51448271d5b5771"
+    },
+    {
+      "path": "creature-art/docs/necropolis-bootstrap.md",
+      "bytes": 2939,
+      "sha256": "e73adb396c46f1dcb3c562310a70d9e2e619a2160c009d7e2d4a13cac89d62d0"
+    },
+    {
+      "path": "creature-art/docs/necropolis-final-four.md",
+      "bytes": 9386,
+      "sha256": "eb38d75b098397b892d88909f90b604f8acaa2470bbf3bcdbe95313642187c0c"
+    },
+    {
+      "path": "creature-art/docs/necropolis-ghosts.md",
+      "bytes": 2497,
+      "sha256": "297c76a356db49fbea6ae48404eda19c0ebd00ca4ba7f25cd64654fa14793881"
+    },
+    {
+      "path": "creature-art/docs/necropolis-liches.md",
+      "bytes": 6328,
+      "sha256": "ae4e95cfe2ea2be9e901755e6d258b6f236f66315556c01057cffa1b66cd89a6"
+    },
+    {
+      "path": "creature-art/docs/necropolis-upgrades.md",
+      "bytes": 2546,
+      "sha256": "e722a729858d803ac62374740eced2d44d37dbe55449ba927d3f942d2da93d38"
+    },
+    {
+      "path": "creature-art/docs/necropolis-vampires.md",
+      "bytes": 6711,
+      "sha256": "93736c0cb3735109208c5570c5aadf084be88bded1abed1fa5e2bc6515569c9b"
+    },
+    {
+      "path": "creature-art/docs/prompt-cskele.txt",
+      "bytes": 665,
+      "sha256": "9a39a56521f2016778dee03d6b4b3b3c35891731a7e63fc5c5ce2fd210a4ad0f"
+    },
+    {
+      "path": "creature-art/docs/roster-necropolis.json",
+      "bytes": 6535,
+      "sha256": "94e199033b1dec6546ee023ab2624e1e974f0f92447130e2b2762a455c931618"
+    },
+    {
+      "path": "creature-art/docs/shape-key-isolation.md",
+      "bytes": 1397,
+      "sha256": "53fa9208332f37fe830b329f26de8137328d81ab3bce899759e79f9c4981bae8"
+    },
+    {
+      "path": "creature-art/docs/skeleton-motion.md",
+      "bytes": 7796,
+      "sha256": "280c5317a5cdaefa04d2b39b47ae38a441d0dd32a666db986725957c19781f15"
+    },
+    {
+      "path": "creature-art/docs/skeleton-study.md",
+      "bytes": 4360,
+      "sha256": "19d9daa41dfc337b7fe13c5e59900706d7443747a269837c086c7ba327a68893"
+    },
+    {
+      "path": "creature-art/docs/zombie-study.md",
+      "bytes": 5961,
+      "sha256": "a4fcf670780248ea1d6ae7527ecf15a7747a28780176ceb5bac09b38d84f4a44"
+    },
+    {
+      "path": "creature-art/export_roster_reference.py",
+      "bytes": 1136,
+      "sha256": "9979a5938653979085469445db798d207086b6964f866f9e6986723659d61888"
+    },
+    {
+      "path": "creature-art/gen_concept.py",
+      "bytes": 13936,
+      "sha256": "b0cf9f0a5a9b70d08ce115a205f71f8afbcbd2361488289e81af3cd1c3c1efac"
+    },
+    {
+      "path": "creature-art/gen_mesh.py",
+      "bytes": 8322,
+      "sha256": "472fb6410c14fb461336ba320ff64dc974a84b47ab20f862011a6d428b75651c"
+    },
+    {
+      "path": "creature-art/layouts/melee.json",
+      "bytes": 432,
+      "sha256": "eaf711e48ee5d0180d79b1332aeec5ad8e1e2893d57c038771f77eb72899f498"
+    },
+    {
+      "path": "creature-art/layouts/shooter.json",
+      "bytes": 415,
+      "sha256": "9574fb25bb5307dfb1617c5d7bc056dc1f98ce3093231929e3b12f429cbb44e2"
+    },
+    {
+      "path": "creature-art/lich_study.py",
+      "bytes": 16257,
+      "sha256": "415a17a59b2dad381d2d1a09d434986627cc40e0fc40e7aa877bbc1738389f03"
+    },
+    {
+      "path": "creature-art/make_final_four_test_map.py",
+      "bytes": 1321,
+      "sha256": "a0157ac214ce3173867ce993911d5d92ac437408872fcb2447ca69a3950da6b0"
+    },
+    {
+      "path": "creature-art/motion_preview.py",
+      "bytes": 8741,
+      "sha256": "21def152e4f8a2181899f3052a2ef3047e5b565dc09f7724d29348daee4ff1f0"
+    },
+    {
+      "path": "creature-art/mounted_dragon_motion.py",
+      "bytes": 15001,
+      "sha256": "901e62927a6e53ca80c837f9d41064750a91e3e822f0f6984493af88cfc88f32"
+    },
+    {
+      "path": "creature-art/new_creature_mod.py",
+      "bytes": 9182,
+      "sha256": "89d11eaa55f312fd99677f6a70ea23c1911c9b77c94b84c7881c3e9b2bd5ece2"
+    },
+    {
+      "path": "creature-art/offset_animation.py",
+      "bytes": 3336,
+      "sha256": "d7985f714ee771e1d87fbf04916b0f75827228b74552ca180050203b32e15406"
+    },
+    {
+      "path": "creature-art/package_backdrop.py",
+      "bytes": 3369,
+      "sha256": "61cf54038c5ece4aae258363c48d554015e0f24d336d30293d387c76fe5b2d49"
+    },
+    {
+      "path": "creature-art/poses.py",
+      "bytes": 26241,
+      "sha256": "873168e33431eed75c4608d7e5f1fe665a5677a5e2271481b8d7ee5ae068cebc"
+    },
+    {
+      "path": "creature-art/prepare_mounted_dragon.py",
+      "bytes": 1234,
+      "sha256": "d88a2b103a82efdbd310cf01d565823752243320b5aeccb415532cf5ba99de47"
+    },
+    {
+      "path": "creature-art/preview.py",
+      "bytes": 22310,
+      "sha256": "b299fd314736b67cf1e22d1da3b97318559f18396ce380e9fe4cf72aa7440c8f"
+    },
+    {
+      "path": "creature-art/profiles/final-four/blackKnight-prompt.txt",
+      "bytes": 1109,
+      "sha256": "883791cac25820260c46b7bde346c4db02a71324dc29877fe8023e6e216f72c9"
+    },
+    {
+      "path": "creature-art/profiles/final-four/boneDragon-prompt.txt",
+      "bytes": 1120,
+      "sha256": "b48ab93ee5766ca54b794e4e815a0293f9821cbb1f94ec91e9015f0f636729c8"
+    },
+    {
+      "path": "creature-art/profiles/final-four/dreadKnight-key-prompt.txt",
+      "bytes": 468,
+      "sha256": "c36efe1ac2dbb6fd86492c0314fa1fafe12245607de126958f6663f7bb669db7"
+    },
+    {
+      "path": "creature-art/profiles/final-four/dreadKnight-prompt.txt",
+      "bytes": 755,
+      "sha256": "ba676be60c3543d25660e9759666d2605e207956792010c36653de066def1eac"
+    },
+    {
+      "path": "creature-art/profiles/final-four/ghostDragon-key-prompt.txt",
+      "bytes": 435,
+      "sha256": "44db1059bb5e2e10e05e5b68f02fe36665fe520044efe98587b2ceb5869db477"
+    },
+    {
+      "path": "creature-art/profiles/final-four/ghostDragon-prompt.txt",
+      "bytes": 726,
+      "sha256": "2a0054564795c10ed7eef16565b21ca0aed6ab6d9f31e353d880d87c35401429"
+    },
+    {
+      "path": "creature-art/profiles/skeleton-motion.json",
+      "bytes": 21945,
+      "sha256": "d203593d6499bde17848982654a04400ada4194ab47fd37e7cbca3e184d466d6"
+    },
+    {
+      "path": "creature-art/profiles/skeleton-study.json",
+      "bytes": 6861,
+      "sha256": "701ce46414bd7e83e1e86e345b1b28fb2eb0d125b7fa1145bbf81691fd5f38b0"
+    },
+    {
+      "path": "creature-art/profiles/zombie-study.json",
+      "bytes": 11519,
+      "sha256": "281f857106a56b94c32d632363154adb2ee26b277e6d4286e6cae123200482a4"
+    },
+    {
+      "path": "creature-art/projected_ik.py",
+      "bytes": 1836,
+      "sha256": "488e2e68e0245e5bbcb983112d9b5e4cad0a75690addec60fdf1e0d05e09900f"
+    },
+    {
+      "path": "creature-art/proxy_skin.py",
+      "bytes": 9092,
+      "sha256": "cdeb6480440065bff866978c93519fb817bedf80d767344a7e31b4c649d09fef"
+    },
+    {
+      "path": "creature-art/README.md",
+      "bytes": 23389,
+      "sha256": "dec94fafc5af022cf84e1bf3ce9951c9884b9e41d9079da1858f600569925b94"
+    },
+    {
+      "path": "creature-art/remesh_mesh.py",
+      "bytes": 2987,
+      "sha256": "143ad3db1b1b0e6c1585ceb1e084b35949d5a2ef8e8dec68513f14e66ef8a5ae"
+    },
+    {
+      "path": "creature-art/render_portrait.py",
+      "bytes": 2835,
+      "sha256": "7e0456e7a57a0c750ae04d747c4d48e9a464a6227e19a3690775d77f518d9956"
+    },
+    {
+      "path": "creature-art/render_saved_creature.py",
+      "bytes": 2438,
+      "sha256": "8890f9a439f94c80a0fae4665bd3a77d9955134f38eb21b20f49e45f1e6e8d7d"
+    },
+    {
+      "path": "creature-art/render_sprites.py",
+      "bytes": 25609,
+      "sha256": "4798b61df719264b105badab7ec23f3a2a1f3801d44729c137af65c6d9377726"
+    },
+    {
+      "path": "creature-art/render_ui_portraits.py",
+      "bytes": 3972,
+      "sha256": "5bd6bab3a08f2df204426025779d8d70a35c81402a696a49f6250ec25a952c9f"
+    },
+    {
+      "path": "creature-art/repair_dragon_flight.py",
+      "bytes": 1464,
+      "sha256": "a5958e423546f251ab91e6bb315ca7315c083af4d4306d449b7087d815f207c0"
+    },
+    {
+      "path": "creature-art/repair_dread_attacks.py",
+      "bytes": 1546,
+      "sha256": "44199e12bcee28241d5faabb63e55513bedf11448b3c58d5441de656c3ba316a"
+    },
+    {
+      "path": "creature-art/repair_knight_attacks.py",
+      "bytes": 12529,
+      "sha256": "f18d51797689f43c4792a79088858c24de9ee495745a9d5619a06f6ab9b649d1"
+    },
+    {
+      "path": "creature-art/repair_mounted_transitions.py",
+      "bytes": 1730,
+      "sha256": "c8b31e2475e114a4145c35bf9edb26c134dd5b9504a4120179fba1b292e75027"
+    },
+    {
+      "path": "creature-art/restore_rig_materials.py",
+      "bytes": 4257,
+      "sha256": "ff6a64599ba615335a04e533322d0444c472045fbcae3594ab1ca4fe585139df"
+    },
+    {
+      "path": "creature-art/rig_mesh.py",
+      "bytes": 2098,
+      "sha256": "0cd6ed10fbc212710df1e0084575ac11fac694196cce4f319cf7712a4f1f9cd3"
+    },
+    {
+      "path": "creature-art/roster_mod.py",
+      "bytes": 7159,
+      "sha256": "995f966f1a7a478dfbc249d2fedc41eb8e1221d37ddfbe5601a8d92717e69450"
+    },
+    {
+      "path": "creature-art/roster_preview.py",
+      "bytes": 5263,
+      "sha256": "d1230254a83186857d24e3dff9edfd613cd488774aeb6263f5059158eb3594a5"
+    },
+    {
+      "path": "creature-art/settle_equipment.py",
+      "bytes": 3508,
+      "sha256": "17e95405a34321111ab3c6b2814e7cce6d0d63395e856aa6d5e28f5af09855b6"
+    },
+    {
+      "path": "creature-art/settle_nonhumanoid.py",
+      "bytes": 3889,
+      "sha256": "25961f90526b1479a1e8efb2898a80a012cc170c16ef5c747522c1efa8054c5c"
+    },
+    {
+      "path": "creature-art/skeleton_geometry.py",
+      "bytes": 4679,
+      "sha256": "686faa7cb5bc38b573f1e504ef53002c1df7110fc52557800bdfbf2c97472e98"
+    },
+    {
+      "path": "creature-art/skeleton_motion.py",
+      "bytes": 18813,
+      "sha256": "a48cc339b42fdca7220a3c3a27d96bb26244e07b9d2b821d2fd72e6c3dc0c515"
+    },
+    {
+      "path": "creature-art/skeleton_study.py",
+      "bytes": 23753,
+      "sha256": "4b3983ff4c5ce92f608679fac2b6e4f13e8ff243718bf48889dadbf6ee1f21d9"
+    },
+    {
+      "path": "creature-art/skin_weights.py",
+      "bytes": 1602,
+      "sha256": "9e83b5fa33edf35770e1e8c2dab8e3f16a73106045d764db32bcff7d2c52ec13"
+    },
+    {
+      "path": "creature-art/spectral_study.py",
+      "bytes": 19226,
+      "sha256": "cb64333cb9bfec1087be4fb8e2f9f5b5b9adadbdc7446d66739870fa3e005f22"
+    },
+    {
+      "path": "creature-art/stabilize_shadows.py",
+      "bytes": 4581,
+      "sha256": "5fa416509627fa68540ca4b7d7316f7786329cb4e4d12b11c0ecdca8f7c3f404"
+    },
+    {
+      "path": "creature-art/study_preview.py",
+      "bytes": 3238,
+      "sha256": "c82e5f2dafff26a3143caa08cbf02ede59f94f50eedcb5f1691a3d74ad62bdc7"
+    },
+    {
+      "path": "creature-art/test_blend_armature_volume.py",
+      "bytes": 2325,
+      "sha256": "60a2772ced0ef4a52c422b761c91e9353af92c1e63c53b6bde5977ce081b2eb4"
+    },
+    {
+      "path": "creature-art/test_bootstrap_normalization.py",
+      "bytes": 3754,
+      "sha256": "da75da1fc39bc641be4ebbf2b2a693aaf9c91d3c9afc52a11c6ddafd0902f83f"
+    },
+    {
+      "path": "creature-art/test_gen_mesh.py",
+      "bytes": 2759,
+      "sha256": "d7f4dc143d204f8df1a4ed49425afc74c4f5e8fa69b945b917f56359a2faa29f"
+    },
+    {
+      "path": "creature-art/test_joint_colliders.py",
+      "bytes": 1431,
+      "sha256": "8b50cef6dd046057a4592e47902f015028c16e1b26809006818158b82aa2fd79"
+    },
+    {
+      "path": "creature-art/test_projected_ik.py",
+      "bytes": 1066,
+      "sha256": "8c8c212adc5012dfff5e426052d57a6260463a37f7f8e8775766ff93bc7e6afd"
+    },
+    {
+      "path": "creature-art/test_remesh_mesh.py",
+      "bytes": 2506,
+      "sha256": "c7f0a223c80de1fd76f68f1bab2b51f1bbcd285e68acc8ebefed0c434806f598"
+    },
+    {
+      "path": "creature-art/test_skeleton_motion.py",
+      "bytes": 9399,
+      "sha256": "a18d40ba65ecbba0f2198eaf907a504ff9a1c836079ff8306b0e035454c64309"
+    },
+    {
+      "path": "creature-art/test_skeleton_study.py",
+      "bytes": 3684,
+      "sha256": "5db935c876db5626bfd0de6dcbb90d417ff7a93d19abaa1c4019e9099b7de0be"
+    },
+    {
+      "path": "creature-art/test_skin_weights.py",
+      "bytes": 1360,
+      "sha256": "75c480d5202166dcfe1dcc9dc8f23c2ec5e4b90fd3a0ae3e163806afc3ded7e3"
+    },
+    {
+      "path": "creature-art/test_zombie_study.py",
+      "bytes": 5307,
+      "sha256": "015daaa4ec3162d1919ec8cbb677e87a2b9a7b5432e86af3f4621a637c5b8219"
+    },
+    {
+      "path": "creature-art/transfer_rig.py",
+      "bytes": 6373,
+      "sha256": "9818f3f844ddfe1ca8983a6d62bbabbd984878da771078eb66baf2b0ba99328b"
+    },
+    {
+      "path": "creature-art/upgrade_study.py",
+      "bytes": 8787,
+      "sha256": "f261e6db0a28912931abf827e7aeec326c0fa99e9a7cb3228458612829cfdf05"
+    },
+    {
+      "path": "creature-art/validate_creature_animation.py",
+      "bytes": 19282,
+      "sha256": "1f2163970c0a8f5599130b37ec185582eed52dfdbfde9e472c68f5bcdbdc70b9"
+    },
+    {
+      "path": "creature-art/vampire_flight.py",
+      "bytes": 7475,
+      "sha256": "eba7282a0e15c6671eb1beab5b2cbfa3f8039194c14028e1d75625c4b2a96676"
+    },
+    {
+      "path": "creature-art/vampire_study.py",
+      "bytes": 12026,
+      "sha256": "e2dd8840f02be221ef29150711f1b41b4092e85a6afd932a37cb68dc9b89f831"
+    },
+    {
+      "path": "creature-art/vcmi_anim.py",
+      "bytes": 7800,
+      "sha256": "8408dd7e10b7139d2d7c5faee2abf7f7ad8e4185519d72c1921d5d490e13af0f"
+    },
+    {
+      "path": "creature-art/wight_motion.py",
+      "bytes": 8048,
+      "sha256": "0f95893377c55860d9216ca879422fd47920e1cafe7075af851216674074bd44"
+    },
+    {
+      "path": "creature-art/zombie_study.py",
+      "bytes": 14362,
+      "sha256": "4efe9fe6738c7878a9fb70ceb82bd88d766af2199bba3a496bde71b061cad572"
+    },
+    {
+      "path": "docs/ATTRIBUTION.md",
+      "bytes": 909,
+      "sha256": "7b797e3a892dd73b44f76fde4be441659e6b2dda6d16e40b7c4ababbab27f55d"
+    },
+    {
+      "path": "docs/MIGRATION-CHECKS.json",
+      "bytes": 443,
+      "sha256": "0ba8d078bd56ad7289915f746f465885ca15012aa1f277eefbf2f3d2856c2d34"
+    },
+    {
+      "path": "docs/REPRODUCING.md",
+      "bytes": 7819,
+      "sha256": "ae615f0bca13cd6ce6df2c31fa12c3eddf0e21914a626435f74360ebea945110"
+    },
+    {
+      "path": "environment-art/adapt_creature_sequence.py",
+      "bytes": 3621,
+      "sha256": "af1fddfa153200727d926a23a5d8f14b1530d83cd1c812719e96a510bf7d0b8b"
+    },
+    {
+      "path": "environment-art/audit_customization.py",
+      "bytes": 2290,
+      "sha256": "fedd38c72b22a405c5589e3af501e1a9f5e6002e00f582c5d0cc72bc8b556c6f"
+    },
+    {
+      "path": "environment-art/build_adventure_assets.py",
+      "bytes": 6957,
+      "sha256": "d35e649cb52bd9a0a56d7f233277e11c458a6f7a668ffdff5419318d45bce6ce"
+    },
+    {
+      "path": "environment-art/build_battlefields.py",
+      "bytes": 1550,
+      "sha256": "97d62284758395cfe030562942eaace3ec04829a62dbdb99530bc0af5a743610"
+    },
+    {
+      "path": "environment-art/build_map.py",
+      "bytes": 6008,
+      "sha256": "54bbfca749e3fbf8d0002c54a55dd55c735a745f95bd16ba73814106159e7195"
+    },
+    {
+      "path": "environment-art/export_references.py",
+      "bytes": 1373,
+      "sha256": "ba65ca4150844616566de0d800622478bbccf04d79e6cf42f9bac00367b03bd2"
+    },
+    {
+      "path": "environment-art/font_probe.py",
+      "bytes": 2925,
+      "sha256": "5e234e65ab8de4868904e536878abe08feef4fb6c265c774d0ff68bdfa21fc89"
+    },
+    {
+      "path": "environment-art/prompts/dirt_birches-prompt.txt",
+      "bytes": 1005,
+      "sha256": "01814dc821aaf827760b1e563fe78af84ab05087b125f01b9a0eea3354a8cb8f"
+    },
+    {
+      "path": "environment-art/prompts/dirt_hills-prompt.txt",
+      "bytes": 1003,
+      "sha256": "998474cf87bb595e4876a16d9bb2142e3e2b7e883f74708754c55e036b78c225"
+    },
+    {
+      "path": "environment-art/prompts/dirt_pines-prompt.txt",
+      "bytes": 1003,
+      "sha256": "fd8d45b5b4a4ead4dcbc7d7b9956b839565730dc21b117342ead54ea14b263af"
+    },
+    {
+      "path": "environment-art/prompts/grass_hills-prompt.txt",
+      "bytes": 802,
+      "sha256": "e6dcd2b86b675dc0f460c412a8672a42a7959992eea893c484eef6d2f6d41522"
+    },
+    {
+      "path": "environment-art/prompts/grass_pines-prompt.txt",
+      "bytes": 802,
+      "sha256": "e22d5dc8a2418c7becffaeeefc76644834d0172b8eb3703f9b91b3b2b42d4644"
+    },
+    {
+      "path": "environment-art/prompts/lava-prompt.txt",
+      "bytes": 790,
+      "sha256": "b47d6d1ff1f1a0a552fc1d9d569135a0db91fbdbb7931afcb4dd3fb49fa2fa57"
+    },
+    {
+      "path": "environment-art/prompts/mapCapitolPrompt.txt",
+      "bytes": 688,
+      "sha256": "a2ac254daf64cce4bcd4b55c7da3c5abc0dfca4a528a340ba2f7b5be4b815457"
+    },
+    {
+      "path": "environment-art/prompts/mapFortKeyPrompt.txt",
+      "bytes": 660,
+      "sha256": "c0d0455bba750fd0d59ea9fa68c68c1f6c8311330c7d12dac78e3e2882b8b4e8"
+    },
+    {
+      "path": "environment-art/prompts/mapFortPrompt.txt",
+      "bytes": 886,
+      "sha256": "aab697e0cf700fcbba8d325e9c16aa2e9f06572b40fdf0d69ad9c42ccb1ca03c"
+    },
+    {
+      "path": "environment-art/prompts/mapVillagePrompt.txt",
+      "bytes": 924,
+      "sha256": "72ac15abb1b43b0b88d4be5671b107c9cba39d68c56312e957695423ca1a4cdf"
+    },
+    {
+      "path": "environment-art/prompts/rough-prompt.txt",
+      "bytes": 677,
+      "sha256": "948c306fa3336e08fb6ae8e4de1a101686981774bf8381aa48aa836d1c28bbdc"
+    },
+    {
+      "path": "environment-art/prompts/sand_mesas-prompt.txt",
+      "bytes": 1003,
+      "sha256": "7769cb0f3b616bab5ed4b1d6cdb6e659e3d46852e6f03fac6cfa955e882e7bf3"
+    },
+    {
+      "path": "environment-art/prompts/sand_shore-prompt.txt",
+      "bytes": 801,
+      "sha256": "111eabf45feef4a0e4747c1cfefaaf279ded063add02769ff3eb572403694d16"
+    },
+    {
+      "path": "environment-art/prompts/ship-prompt.txt",
+      "bytes": 809,
+      "sha256": "f7c295381f47908551a571b9fb60001f990ee5db87e1b7d1e2a691b5415dad56"
+    },
+    {
+      "path": "environment-art/prompts/snow_mountains-prompt.txt",
+      "bytes": 805,
+      "sha256": "3b618a58d89f4d8525cb580d486e8269f18822f4e7a7dc9a355b95c51c01ab55"
+    },
+    {
+      "path": "environment-art/prompts/snow_trees-prompt.txt",
+      "bytes": 801,
+      "sha256": "42d7d4e77ba822427a218be73157147be11a7000398f5dc30a4122d2cbfa908a"
+    },
+    {
+      "path": "environment-art/prompts/subterranean-prompt.txt",
+      "bytes": 684,
+      "sha256": "d3208ac70f2470a0f41284beacdf6014e13eefa32712c704f0086a40f5113136"
+    },
+    {
+      "path": "environment-art/prompts/swamp_trees-prompt.txt",
+      "bytes": 767,
+      "sha256": "7c050064273d86aaa7cf338ca76a77329bb3e42b6cbd9e4b5f52c9e44480ed7e"
+    },
+    {
+      "path": "environment-art/README.md",
+      "bytes": 5503,
+      "sha256": "23d357505e676a7ca095cdb3f28e28755e6a6fc77a0f21ce279358cff3060a7e"
+    },
+    {
+      "path": "environment-art/register_animated_scenery.py",
+      "bytes": 3875,
+      "sha256": "55d2eed1377439267238dec233f845337982c2b04ce0df645487b02d178f462e"
+    },
+    {
+      "path": "environment-art/register_landmarks.py",
+      "bytes": 5696,
+      "sha256": "5727db059de787673c289cdcd07bdc601139c2cec661adf52e572a8c0f329132"
+    },
+    {
+      "path": "environment-art/repaint_terrain.py",
+      "bytes": 3395,
+      "sha256": "34659fa60a3cf5d5b136cf338f815ec8702065b9446143ca7a22d2f36b605772"
+    },
+    {
+      "path": "environment-art/verify_adventure_assets.py",
+      "bytes": 3385,
+      "sha256": "6b754cb90be51e3fb756f7aac088841f73970f2a7aa9cdad3ee744f367b6a2d9"
+    },
+    {
+      "path": "LICENSE",
+      "bytes": 15119,
+      "sha256": "2d5ffb759ac6444583842abd4a25745f5d172f63318dc49966f8c9859b4ca849"
+    },
+    {
+      "path": "MIGRATION.json",
+      "bytes": 6977,
+      "sha256": "f3a64c4416cce50cb5f7f9d23c181f9832746e28a7371c29c4a757a752ee6449"
+    },
+    {
+      "path": "prompts/vampire-bat.txt",
+      "bytes": 1158,
+      "sha256": "cdb9fc1c66dbef9f208a87e89374da38f3d7bcda5cddd1928277375b63dbd761"
+    },
+    {
+      "path": "prompts/vampire-lord.txt",
+      "bytes": 1250,
+      "sha256": "830bcfa85a7666f2b03be9362d0b27185b18b61b953263e90e046fcb9dee7fe6"
+    },
+    {
+      "path": "prompts/vampire.txt",
+      "bytes": 1209,
+      "sha256": "93200a05016a78b82914778410828142907ebee51b13a257677ebed6a043c4df"
+    },
+    {
+      "path": "README.md",
+      "bytes": 5779,
+      "sha256": "2462e2b2cc2c65dd511518f2c8eb9d4e0bac14bf0712c425f138306c6057e640"
+    },
+    {
+      "path": "reference-config/necropolis.json",
+      "bytes": 14884,
+      "sha256": "439fcf215303b05402958f15c7eab87bd401fa8dedf331c1c72c1fcce7621f0a"
+    },
+    {
+      "path": "requirements.txt",
+      "bytes": 28,
+      "sha256": "3ce94c790fcbba79f0157d6230581d06092e1c0e20c27e461e0e66d3e9616fc7"
+    },
+    {
+      "path": "town-art/build_layered_town.py",
+      "bytes": 7015,
+      "sha256": "36366f0d81b886453e116244a2e871db9cc080a0323bd84c23e12682b20ec51c"
+    },
+    {
+      "path": "town-art/build_ui_thumbnails.py",
+      "bytes": 6886,
+      "sha256": "1e412b846b3dda3b91aa78eb3c55fb66a98f05b89eae080ebf58b5713e31773e"
+    },
+    {
+      "path": "town-art/derive_necropolis_ui_buildings.py",
+      "bytes": 6416,
+      "sha256": "b539a96cadc867a48414f5702f7a636a06fcb279ff3d84d1347a8dcf624753ea"
+    },
+    {
+      "path": "town-art/export_necropolis_reference.py",
+      "bytes": 3715,
+      "sha256": "42d279236036358617ada1f926f0272d700bb15ccc7eb623bcfbcb25b1f0f97c"
+    },
+    {
+      "path": "town-art/extract_ui_references.py",
+      "bytes": 2193,
+      "sha256": "b37144682dc2331bba57d4921551d89553ececa2ee62c43459467234db9bd66d"
+    },
+    {
+      "path": "town-art/layer-review.html",
+      "bytes": 5000,
+      "sha256": "a76c2a7c52c6f4637917caccb4a38aca6dba839105898cb8f4c629e8209c2517"
+    },
+    {
+      "path": "town-art/prepare_building_inputs.py",
+      "bytes": 2031,
+      "sha256": "583c1c8954be757126b6b4907fbaf8ba8eb6dd2230c0d2b266a64b0a4664990e"
+    },
+    {
+      "path": "town-art/prompts.md",
+      "bytes": 3395,
+      "sha256": "ee211120f639f177f83cb8318e6a4736318d981a8777dc9b27e2b79eb1a1a8ce"
+    },
+    {
+      "path": "town-art/README.md",
+      "bytes": 8840,
+      "sha256": "7cb8c5c2845a2611a7ae2c2164ebee056a5e609e0c5d688917243664a38c36de"
+    },
+    {
+      "path": "town-art/refine_buildings.py",
+      "bytes": 5691,
+      "sha256": "e7a2b6892b34fccb12d1896e479d4d18cfc4f52bdb10e3beea45dc7f4b6e7c3a"
+    },
+    {
+      "path": "town-art/ui-thumbnail-prompts.json",
+      "bytes": 28751,
+      "sha256": "1f48f1aa4adf5df33be8ec108b46b6b6308e14600f6eb1be2df09f611170e112"
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+# Generated payloads, local runtimes and build products stay on disk.
+/build/
+/dist/
+/reports/
+/retired-test-files/
+/records/
+/venv-win/
+/.venv/
+/.runtime-*/
+/logs/
+/tmp/
+/.tmp/
+/backups/
+/resources/*.ico
+/resources/*-icon.png
+
+# Local caches and editor state.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+node_modules/
+.vs/
+.vscode/
+.idea/
+
+# Machine-local files and secrets.
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+*.token
+config/tunnel.json
+
+# Archives and build artifacts.
+*.log
+*.bak
+*.tmp
+*.zip
+*.7z
+*.rar
+*.tar
+*.tar.gz
+*.whl
+*.pdb
+*.exe
+*.dll
+*.lib
+*.obj
+
+# Historical H3HD source archive (not distributed)
+/scripts/archive/
+/docs/history/

@@ -1,0 +1,22 @@
+--- a/H3-ImageAI/tools/H3TierExport/tests/creature_master_set_contract.py
++++ b/H3-ImageAI/tools/H3TierExport/tests/creature_master_set_contract.py
+@@ -34,7 +34,7 @@
+         self.inventory_path = self.root / "codex-map" / "native-resource-inventory.json"
+         self.inventory_path.parent.mkdir(parents=True)
+         self.master_root = self.root / "CGNOLL_基础形态"
+-        self.master_root.mkdir()
++        self.master_root.mkdir(parents=True)
+         self.ref_root = self.root / "OfficialHD2015" / "pak_frames" / "common" / "sprite" / "x3" / "CGNOLL" / "frames"
+         self.ref_root.mkdir(parents=True)
+         rgba(self.master_root / "CGNOLL_0_0.png", (100, 120), (25, 20, 74, 99))
+--- a/H3-ImageAI/tools/H3TierExport/tests/creature_scale_reports_contract.py
++++ b/H3-ImageAI/tools/H3TierExport/tests/creature_scale_reports_contract.py
+@@ -135,7 +135,7 @@
+         self.assertNotEqual(r['slots'][0]['geometry'],r['slots'][1]['geometry'])
+ 
+     def test_3x_status_is_reported_even_if_the_master_is_missing(self):
+-        (self.masters/f'{self.identity}_0_0.png').rename(self.root/'preserved raw parent.png')
++        Path(self.images[0]['path']).rename(self.root/'preserved raw parent.png')
+         image=self.root/'formal3x fixture.png';Image.new('RGBA',(48,48),(120,80,50,255)).save(image);image_ref=scale.reference(image)
+         receipt=self.json('formal 3x receipt.json',{'schema':'h3.motion.receipt.v1','target_scale':3,'png_sha256':image_ref['sha256'],
+             'output_pixels':[48,48],'origin_3x':[24,24],'contract':{'native_entry':{'key':self.keys[0],'targets':self.geometry}}})

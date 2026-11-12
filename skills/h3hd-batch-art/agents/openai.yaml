@@ -1,0 +1,3 @@
+interface:
+  display_name: "H3HD 批量制图"
+  short_description: "Batch H3HD artwork with H3TierExport and targeted AI repairs"

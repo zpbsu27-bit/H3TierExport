@@ -1,0 +1,175 @@
+--- a/src/apng_gui.hpp
++++ b/src/apng_gui.hpp
+@@ -1,5 +1,6 @@
+ #pragma once
+ #include "apng.hpp"
++#include "apng_scale_mode.hpp"
+ #include <commctrl.h>
+ #include <commdlg.h>
+ #include <shellapi.h>
+@@ -27,7 +28,7 @@
+  IDC_FOLDER=3301,IDC_FOLDER_BROWSE,IDC_OUTPUT,IDC_OUTPUT_BROWSE,
+  IDC_GROUPS=3310,IDC_PREVIEW,IDC_FRAME_LABEL,IDC_FRAME_PREV,IDC_PLAY,IDC_FRAME_NEXT,
+  IDC_FPS,IDC_LOOP,IDC_MANUAL,IDC_EXPORT_SELECTED,IDC_EXPORT_ALL,IDC_CLOSE,
+- IDC_STATUS,IDC_LOG
++ IDC_STATUS,IDC_LOG,IDC_SCALE_MODE,IDC_FILE_LABEL
+ };
+ 
+ struct FrameFile {fs::path path;int frameNumber=-1;std::uint32_t width=0,height=0;std::uint64_t bytes=0;};
+@@ -40,6 +41,7 @@
+ struct PreviewLoadResult {std::uint64_t generation=0;std::size_t groupIndex=0;std::vector<PreviewBitmap>frames;std::wstring error;};
+ struct State {
+  HWND owner{},window{},folder{},folderBrowse{},output{},outputBrowse{},groups{},preview{},frameLabel{},framePrev{},play{},frameNext{},fps{},loop{},manual{},exportSelected{},exportAll{},close{},status{},log{};
++ HWND scaleMode{},fileLabel{};bool groupScale=true;
+  HFONT font{};std::wstring initialGroup;std::vector<AnimationGroup>items;std::vector<PreviewBitmap>previewFrames;
+  std::size_t currentFrame=0;int previewGroup=-1;std::uint64_t previewGeneration=0,scanGeneration=0;bool playing=false,busy=false,done=false,outputAuto=true,updatingOutput=false,folderDialogBusy=false,scanning=false,previewLoading=false;
+  std::vector<fs::path>pendingManualFiles;
+@@ -59,6 +61,7 @@
+ inline void append_log(State&s,const std::wstring&line){int n=GetWindowTextLengthW(s.log);SendMessageW(s.log,EM_SETSEL,n,n);auto value=line+L"\r\n";SendMessageW(s.log,EM_REPLACESEL,FALSE,(LPARAM)value.c_str());SendMessageW(s.log,EM_SCROLLCARET,0,0);}
+ inline void clear_preview(State&s);
+ inline void load_group_preview(State&s,std::size_t index);
++inline void update_preview_file_label(State&s);
+ 
+ inline std::pair<std::uint32_t,std::uint32_t> png_dimensions(const fs::path&path){
+  std::ifstream in(path,std::ios::binary);need(bool(in),"cannot open PNG header: "+str(path));std::uint8_t h[24]{};in.read((char*)h,sizeof(h));need(in.gcount()==sizeof(h),"PNG header is truncated: "+str(path));
+@@ -149,6 +152,7 @@
+  for(auto&frame:s.previewFrames)if(frame.bitmap)DeleteObject(frame.bitmap);s.previewFrames.clear();s.currentFrame=0;s.previewGroup=-1;
+  if(s.framePrev)EnableWindow(s.framePrev,FALSE);if(s.play)EnableWindow(s.play,FALSE);if(s.frameNext)EnableWindow(s.frameNext,FALSE);
+  if(s.preview)InvalidateRect(s.preview,nullptr,TRUE);if(s.frameLabel)set_text(s.frameLabel,L"无预览");
++ if(s.fileLabel)set_text(s.fileLabel,L"文件：无预览");
+ }
+ inline void destroy_preview_frames(std::vector<PreviewBitmap>&frames){for(auto&frame:frames)if(frame.bitmap)DeleteObject(frame.bitmap);frames.clear();}
+ inline int preview_fps(const State&s){try{size_t used=0;auto value=text(s.fps);int fps=std::stoi(value,&used);if(used==value.size()&&fps>=1&&fps<=60)return fps;}catch(...){}return 8;}
+@@ -157,6 +161,7 @@
+  bool loop=SendMessageW(s.loop,BM_GETCHECK,0,0)==BST_CHECKED;
+  if(restartAtEnd&&!loop&&s.currentFrame+1>=s.previewFrames.size())s.currentFrame=0;
+  set_text(s.frameLabel,L"帧 "+std::to_wstring(s.currentFrame+1)+L" / "+std::to_wstring(s.previewFrames.size()));
++ update_preview_file_label(s);
+  InvalidateRect(s.preview,nullptr,FALSE);SetTimer(s.window,PREVIEW_TIMER,(UINT)std::max(16,1000/preview_fps(s)),nullptr);s.playing=true;set_text(s.play,L"暂停");
+ }
+ inline PreviewBitmap make_preview_bitmap(HDC dc,const std::vector<std::uint8_t>&rgba,std::uint32_t width,std::uint32_t height){
+@@ -178,13 +183,34 @@
+   if(PostMessageW(window,WM_PREVIEW_DONE,0,(LPARAM)result.get()))result.release();else destroy_preview_frames(result->frames);
+  }).detach();
+ }
++inline double current_preview_scale(const State&s,int width,int height){
++ std::vector<std::pair<std::uint32_t,std::uint32_t>>canvases;
++ for(const auto&frame:s.previewFrames)canvases.emplace_back(frame.width,frame.height);
++ return apngscale::factor(canvases,std::min(s.currentFrame,canvases.empty()?std::size_t(0):canvases.size()-1),s.groupScale,width,height,sx(s.window,12));
++}
++inline std::wstring preview_filename_text(const fs::path&file){
++ auto parsed=official_frame_key(file);std::wstring def=L"未识别";
++ if(parsed){auto sep=parsed->first.rfind(L'_');def=parsed->first.substr(0,sep)+L".DEF";}
++ return L"DEF："+def+L" | "+file.filename().wstring();
++}
++inline void update_preview_file_label(State&s){
++ if(!s.fileLabel||s.previewGroup<0||(size_t)s.previewGroup>=s.items.size())return;
++ const auto&group=s.items[(size_t)s.previewGroup];if(s.currentFrame>=group.frames.size())return;
++ auto value=preview_filename_text(group.frames[s.currentFrame].path);
++ if(s.currentFrame<s.previewFrames.size()){
++  const auto&frame=s.previewFrames[s.currentFrame];RECT view{};GetClientRect(s.preview,&view);
++  auto pct=std::llround(current_preview_scale(s,view.right-view.left,view.bottom-view.top)*1000)/10.0;
++  value+=L" | "+std::to_wstring(frame.width)+L"×"+std::to_wstring(frame.height)+L" | "+std::to_wstring(pct)+L"%";
++ }
++ set_text(s.fileLabel,value);
++}
+ inline void draw_preview(State&s,DRAWITEMSTRUCT*draw){
+  auto dc=draw->hDC;auto r=draw->rcItem;FillRect(dc,&r,(HBRUSH)GetStockObject(WHITE_BRUSH));int tile=sx(s.window,18);
+  HBRUSH light=CreateSolidBrush(RGB(238,238,238)),dark=CreateSolidBrush(RGB(215,215,215));
+  for(int y=(int)r.top;y<r.bottom;y+=tile)for(int x=(int)r.left;x<r.right;x+=tile){RECT cell{x,y,std::min<LONG>((LONG)x+tile,r.right),std::min<LONG>((LONG)y+tile,r.bottom)};FillRect(dc,&cell,(((x-r.left)/tile+(y-r.top)/tile)&1)?dark:light);}
+  DeleteObject(light);DeleteObject(dark);
+  if(s.previewFrames.empty()){SetBkMode(dc,TRANSPARENT);DrawTextW(dc,L"选择左侧动画组即可播放预览",-1,&r,DT_CENTER|DT_VCENTER|DT_SINGLELINE);return;}
+- const auto&frame=s.previewFrames[std::min(s.currentFrame,s.previewFrames.size()-1)];int rw=r.right-r.left,rh=r.bottom-r.top;double scale=std::min(double(rw-24)/frame.width,double(rh-24)/frame.height);scale=std::max(0.01,scale);int w=(int)std::llround(frame.width*scale),h=(int)std::llround(frame.height*scale);int x=r.left+(rw-w)/2,y=r.top+(rh-h)/2;
++ const auto&frame=s.previewFrames[std::min(s.currentFrame,s.previewFrames.size()-1)];int rw=r.right-r.left,rh=r.bottom-r.top;double scale=current_preview_scale(s,rw,rh);int w=std::max(1,(int)std::llround(frame.width*scale)),h=std::max(1,(int)std::llround(frame.height*scale));int x=r.left+(rw-w)/2,y=r.top+(rh-h)/2;
+  HDC memory=CreateCompatibleDC(dc);if(memory){auto old=SelectObject(memory,frame.bitmap);BLENDFUNCTION blend{AC_SRC_OVER,0,255,AC_SRC_ALPHA};SetStretchBltMode(dc,HALFTONE);AlphaBlend(dc,x,y,w,h,memory,0,0,(int)frame.width,(int)frame.height,blend);SelectObject(memory,old);DeleteDC(memory);}
+ }
+ inline void layout(State&s){
+@@ -193,11 +219,15 @@
+  MoveWindow(GetDlgItem(s.window,3202),m,y,label,bh,TRUE);MoveWindow(s.output,m+label,y,W-2*m-label-browse-gap,bh,TRUE);MoveWindow(s.outputBrowse,W-m-browse,y,browse,bh,TRUE);y+=bh+gap;
+  MoveWindow(GetDlgItem(s.window,3203),m,y,W-2*m,sx(s.window,30),TRUE);y+=sx(s.window,30)+gap;
+  int bottom=sx(s.window,112),leftW=std::min(sx(s.window,500),(W-3*m)/2),rightX=m+leftW+gap,rightW=std::max(sx(s.window,260),W-rightX-m),bodyH=std::max(sx(s.window,180),H-y-bottom-m);
+- MoveWindow(s.groups,m,y,leftW,bodyH,TRUE);MoveWindow(s.preview,rightX,y,rightW,bodyH-sx(s.window,46),TRUE);
++ MoveWindow(s.groups,m,y,leftW,bodyH,TRUE);MoveWindow(s.preview,rightX,y,rightW,std::max(sx(s.window,40),bodyH-sx(s.window,116)),TRUE);
++ MoveWindow(s.fileLabel,rightX,y+bodyH-sx(s.window,110),rightW,sx(s.window,36),TRUE);
++ MoveWindow(GetDlgItem(s.window,3205),rightX,y+bodyH-sx(s.window,70),sx(s.window,76),sx(s.window,28),TRUE);
++ MoveWindow(s.scaleMode,rightX+sx(s.window,80),y+bodyH-sx(s.window,72),std::max(sx(s.window,170),rightW-sx(s.window,80)),sx(s.window,180),TRUE);
+  int navY=y+bodyH-sx(s.window,38),btn=sx(s.window,78);MoveWindow(s.framePrev,rightX,navY,btn,sx(s.window,28),TRUE);MoveWindow(s.play,rightX+btn+gap,navY,btn,sx(s.window,28),TRUE);MoveWindow(s.frameNext,rightX+2*(btn+gap),navY,btn,sx(s.window,28),TRUE);MoveWindow(s.frameLabel,rightX+3*(btn+gap),navY,rightW-3*(btn+gap),sx(s.window,28),TRUE);
+  int rowY=H-bottom+m/2;MoveWindow(s.manual,m,rowY,sx(s.window,150),bh,TRUE);MoveWindow(GetDlgItem(s.window,3204),m+sx(s.window,158),rowY,sx(s.window,55),bh,TRUE);MoveWindow(s.fps,m+sx(s.window,215),rowY,sx(s.window,55),bh,TRUE);MoveWindow(s.loop,m+sx(s.window,278),rowY,sx(s.window,140),bh,TRUE);
+  int closeW=sx(s.window,90),allW=sx(s.window,125),selW=sx(s.window,125),x=W-m-closeW;MoveWindow(s.close,x,rowY,closeW,bh,TRUE);x-=gap+allW;MoveWindow(s.exportAll,x,rowY,allW,bh,TRUE);x-=gap+selW;MoveWindow(s.exportSelected,x,rowY,selW,bh,TRUE);
+  MoveWindow(s.status,m,H-bottom+bh+m/2,W-2*m,sx(s.window,24),TRUE);MoveWindow(s.log,m,H-bottom+bh+sx(s.window,28)+m/2,W-2*m,std::max(sx(s.window,42),bottom-bh-sx(s.window,28)),TRUE);
++ update_preview_file_label(s);
+ }
+ 
+ inline void update_output_folder(State&s,const std::wstring&folder,const std::vector<fs::path>&manualFiles={}){if(!folder.empty()){set_text(s.folder,folder);set_default_output(s,fs::path(folder));scan_folder_async(s,fs::path(folder),manualFiles);}}
+@@ -214,7 +244,7 @@
+  while(!base.empty()&&base.back()==L'-')base.pop_back();if(base.empty())base=L"animation";return base+L".apng.png";
+ }
+ inline void set_busy(State&s,bool busy){
+- s.busy=busy;bool ready=!busy&&!s.scanning&&!s.folderDialogBusy;for(HWND h:{s.folder,s.folderBrowse,s.output,s.outputBrowse,s.groups,s.framePrev,s.play,s.frameNext,s.fps,s.loop,s.manual,s.exportSelected,s.exportAll,s.close})EnableWindow(h,ready);
++ s.busy=busy;bool ready=!busy&&!s.scanning&&!s.folderDialogBusy;for(HWND h:{s.folder,s.folderBrowse,s.output,s.outputBrowse,s.groups,s.framePrev,s.play,s.frameNext,s.fps,s.loop,s.manual,s.exportSelected,s.exportAll,s.close,s.scaleMode})EnableWindow(h,ready);
+  if(busy){KillTimer(s.window,PREVIEW_TIMER);s.playing=false;set_text(s.play,L"播放");set_text(s.status,L"正在生成 APNG；源 PNG 只读。");}
+  else{int i=ListView_GetNextItem(s.groups,-1,LVNI_SELECTED);EnableWindow(s.exportSelected,ready&&i>=0);EnableWindow(s.exportAll,ready&&!s.items.empty());EnableWindow(s.framePrev,ready&&!s.previewFrames.empty());EnableWindow(s.play,ready&&!s.previewFrames.empty());EnableWindow(s.frameNext,ready&&!s.previewFrames.empty());}
+ }
+@@ -300,6 +330,9 @@
+     control(*s,L"STATIC",L"按 def_<名称>_<组>_<帧>__<SHA>.png 自动分组。选择左侧组即可实时播放；只预览不会导出，也不会改动源 PNG。",SS_LEFT,3203);
+     s->groups=control(*s,WC_LISTVIEWW,L"",LVS_REPORT|LVS_SINGLESEL|LVS_SHOWSELALWAYS|WS_BORDER,IDC_GROUPS,WS_EX_CLIENTEDGE);SetWindowSubclass(s->groups,group_context_forward,2,(DWORD_PTR)w);layout_columns(*s);
+     s->preview=control(*s,L"STATIC",L"",SS_OWNERDRAW|WS_BORDER,IDC_PREVIEW,WS_EX_CLIENTEDGE);s->framePrev=control(*s,L"BUTTON",L"上一帧",BS_PUSHBUTTON,IDC_FRAME_PREV);s->play=control(*s,L"BUTTON",L"播放",BS_PUSHBUTTON,IDC_PLAY);s->frameNext=control(*s,L"BUTTON",L"下一帧",BS_PUSHBUTTON,IDC_FRAME_NEXT);s->frameLabel=control(*s,L"STATIC",L"无预览",SS_LEFT,IDC_FRAME_LABEL);
++    s->fileLabel=control(*s,L"STATIC",L"文件：无预览",SS_LEFT,IDC_FILE_LABEL);control(*s,L"STATIC",L"预览倍率",SS_LEFT,3205);
++    s->scaleMode=control(*s,WC_COMBOBOXW,L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,IDC_SCALE_MODE);
++    SendMessageW(s->scaleMode,CB_ADDSTRING,0,(LPARAM)L"逐帧适配窗口");SendMessageW(s->scaleMode,CB_ADDSTRING,0,(LPARAM)L"整组同倍率（PNG像素比例）");SendMessageW(s->scaleMode,CB_SETCURSEL,1,0);
+     s->manual=control(*s,L"BUTTON",L"手动多选 PNG…",BS_PUSHBUTTON,IDC_MANUAL);control(*s,L"STATIC",L"FPS",SS_LEFT,3204);s->fps=control(*s,L"EDIT",L"8",WS_BORDER|ES_NUMBER|ES_CENTER,IDC_FPS,WS_EX_CLIENTEDGE);s->loop=control(*s,L"BUTTON",L"循环播放",BS_AUTOCHECKBOX|WS_TABSTOP,IDC_LOOP);SendMessageW(s->loop,BM_SETCHECK,BST_CHECKED,0);
+     s->exportSelected=control(*s,L"BUTTON",L"导出选中",BS_PUSHBUTTON,IDC_EXPORT_SELECTED);s->exportAll=control(*s,L"BUTTON",L"导出全部",BS_DEFPUSHBUTTON,IDC_EXPORT_ALL);s->close=control(*s,L"BUTTON",L"关闭",BS_PUSHBUTTON,IDC_CLOSE);
+     s->status=control(*s,L"STATIC",L"拖入一个文件夹即可扫描其中所有同名动画帧。",SS_LEFT,IDC_STATUS);s->log=control(*s,L"EDIT",L"",WS_BORDER|ES_MULTILINE|ES_AUTOVSCROLL|ES_READONLY|WS_VSCROLL,IDC_LOG,WS_EX_CLIENTEDGE);SendMessageW(s->log,EM_SETLIMITTEXT,1024*1024,0);layout(*s);return 0;
+@@ -316,7 +349,7 @@
+     s->previewFrames=std::move(result->frames);s->currentFrame=0;auto key=s->items[result->groupIndex].key;set_text(s->status,L"正在预览："+key+L"（不会导出或修改源 PNG）");EnableWindow(s->framePrev,!s->busy);EnableWindow(s->play,!s->busy);EnableWindow(s->frameNext,!s->busy);start_preview_playback(*s,false);return 0;
+    }
+    case WM_DROPFILES:{HDROP drop=(HDROP)wp;UINT count=DragQueryFileW(drop,0xffffffff,nullptr,0);std::vector<fs::path>paths;for(UINT i=0;i<count;i++){UINT len=DragQueryFileW(drop,i,nullptr,0);std::wstring value(len+1,L'\0');DragQueryFileW(drop,i,value.data(),len+1);value.resize(len);paths.emplace_back(value);}DragFinish(drop);if(!paths.empty())add_file_paths(*s,paths);return 0;}
+-   case WM_COMMAND:{int id=LOWORD(wp),code=HIWORD(wp);if(code==EN_CHANGE&&id==IDC_OUTPUT&&!s->updatingOutput)s->outputAuto=false;if(code==EN_CHANGE&&id==IDC_FPS&&s->playing){try{auto n=std::stoi(text(s->fps));if(n>=1&&n<=60)SetTimer(w,PREVIEW_TIMER,(UINT)std::max(16,1000/n),nullptr);}catch(...){}}if(code!=BN_CLICKED&&code!=EN_CHANGE)return 0;
++   case WM_COMMAND:{int id=LOWORD(wp),code=HIWORD(wp);if(id==IDC_SCALE_MODE&&code==CBN_SELCHANGE){s->groupScale=SendMessageW(s->scaleMode,CB_GETCURSEL,0,0)==1;update_preview_file_label(*s);InvalidateRect(s->preview,nullptr,TRUE);return 0;}if(code==EN_CHANGE&&id==IDC_OUTPUT&&!s->updatingOutput)s->outputAuto=false;if(code==EN_CHANGE&&id==IDC_FPS&&s->playing){try{auto n=std::stoi(text(s->fps));if(n>=1&&n<=60)SetTimer(w,PREVIEW_TIMER,(UINT)std::max(16,1000/n),nullptr);}catch(...){}}if(code!=BN_CLICKED&&code!=EN_CHANGE)return 0;
+     if(id==IDC_FOLDER_BROWSE)start_folder_picker(*s,false);
+     else if(id==IDC_OUTPUT_BROWSE)start_folder_picker(*s,true);
+     else if(id==IDC_MANUAL){auto paths=choose_png_files(w);if(!paths.empty())add_file_paths(*s,paths);}
+@@ -324,13 +357,13 @@
+     else if(id==IDC_EXPORT_ALL)start_export(*s,true);
+     else if(id==IDC_CLOSE){if(s->busy){MessageBoxW(w,L"APNG 正在导出，请等待完成后再关闭。",L"H3TierExport",MB_OK|MB_ICONINFORMATION);return 0;}SendMessageW(w,WM_CLOSE,0,0);}
+     else if(id==IDC_PLAY){if(s->previewFrames.empty()||s->previewLoading)return 0;if(s->playing){KillTimer(w,PREVIEW_TIMER);s->playing=false;set_text(s->play,L"播放");}else start_preview_playback(*s,true);}
+-    else if(id==IDC_FRAME_PREV||id==IDC_FRAME_NEXT){if(!s->previewFrames.empty()&&!s->previewLoading){if(s->playing){KillTimer(w,PREVIEW_TIMER);s->playing=false;set_text(s->play,L"播放");}auto n=s->previewFrames.size();if(id==IDC_FRAME_PREV)s->currentFrame=(s->currentFrame+n-1)%n;else s->currentFrame=(s->currentFrame+1)%n;set_text(s->frameLabel,L"帧 "+std::to_wstring(s->currentFrame+1)+L" / "+std::to_wstring(n));InvalidateRect(s->preview,nullptr,TRUE);}}
++    else if(id==IDC_FRAME_PREV||id==IDC_FRAME_NEXT){if(!s->previewFrames.empty()&&!s->previewLoading){if(s->playing){KillTimer(w,PREVIEW_TIMER);s->playing=false;set_text(s->play,L"播放");}auto n=s->previewFrames.size();if(id==IDC_FRAME_PREV)s->currentFrame=(s->currentFrame+n-1)%n;else s->currentFrame=(s->currentFrame+1)%n;set_text(s->frameLabel,L"帧 "+std::to_wstring(s->currentFrame+1)+L" / "+std::to_wstring(n));update_preview_file_label(*s);InvalidateRect(s->preview,nullptr,TRUE);}}
+     return 0;
+    }
+    case WM_CONTEXTMENU:if((HWND)wp==s->groups){show_group_context_menu(*s,lp);return 0;}break;
+    case WM_NOTIFY:{auto*n=(NMHDR*)lp;if(n->idFrom==IDC_GROUPS&&n->code==LVN_ITEMCHANGED&&!s->busy&&!s->scanning){auto*change=(NMLISTVIEW*)lp;if((change->uNewState&LVIS_SELECTED)&&!(change->uOldState&LVIS_SELECTED))load_group_preview(*s,(size_t)change->iItem);}return 0;}
+    case WM_DRAWITEM:{auto*d=(DRAWITEMSTRUCT*)lp;if(d->CtlID==IDC_PREVIEW){draw_preview(*s,d);return TRUE;}break;}
+-   case WM_TIMER:if(wp==PREVIEW_TIMER&&s->playing&&!s->previewFrames.empty()){if(s->currentFrame+1<s->previewFrames.size())s->currentFrame++;else if(SendMessageW(s->loop,BM_GETCHECK,0,0)==BST_CHECKED)s->currentFrame=0;else{s->playing=false;KillTimer(w,PREVIEW_TIMER);set_text(s->play,L"播放");}set_text(s->frameLabel,L"帧 "+std::to_wstring(s->currentFrame+1)+L" / "+std::to_wstring(s->previewFrames.size()));InvalidateRect(s->preview,nullptr,FALSE);return 0;}break;
++   case WM_TIMER:if(wp==PREVIEW_TIMER&&s->playing&&!s->previewFrames.empty()){if(s->currentFrame+1<s->previewFrames.size())s->currentFrame++;else if(SendMessageW(s->loop,BM_GETCHECK,0,0)==BST_CHECKED)s->currentFrame=0;else{s->playing=false;KillTimer(w,PREVIEW_TIMER);set_text(s->play,L"播放");}set_text(s->frameLabel,L"帧 "+std::to_wstring(s->currentFrame+1)+L" / "+std::to_wstring(s->previewFrames.size()));update_preview_file_label(*s);InvalidateRect(s->preview,nullptr,FALSE);return 0;}break;
+    case WM_EXPORT_PROGRESS:{std::unique_ptr<std::wstring>progressText((std::wstring*)lp);set_text(s->status,*progressText);append_log(*s,*progressText);return 0;}
+    case WM_EXPORT_DONE:{std::unique_ptr<ExportResult>result((ExportResult*)lp);set_busy(*s,false);for(const auto&line:result->lines)append_log(*s,line);set_text(s->status,L"导出完成：成功 "+std::to_wstring(result->succeeded)+L" / "+std::to_wstring(result->lines.size()));return 0;}
+    case WM_CLOSE:if(s->busy||s->folderDialogBusy){MessageBoxW(w,L"APNG 正在导出或打开系统文件夹选择框，请完成后再关闭。",L"H3TierExport",MB_OK|MB_ICONINFORMATION);return 0;}s->done=true;DestroyWindow(w);return 0;
+@@ -344,18 +377,26 @@
+  static std::once_flag once;std::call_once(once,[]{WNDCLASSW c{};c.lpfnWndProc=window_proc;c.hInstance=GetModuleHandleW(nullptr);c.hCursor=LoadCursorW(nullptr,IDC_ARROW);c.hbrBackground=(HBRUSH)(COLOR_WINDOW+1);c.lpszClassName=WINDOW_CLASS;need(RegisterClassW(&c)!=0,"register APNG window");});
+ }
+ inline Json selftest(){
++ std::vector<std::pair<std::uint32_t,std::uint32_t>> canvases={{100,100},{200,100}};
++ need(apngscale::factor(canvases,0,true,224,224)==apngscale::factor(canvases,1,true,224,224),"group preview must retain one pixel scale across unequal canvases");
++ need(apngscale::factor(canvases,0,false,224,224)>apngscale::factor(canvases,1,false,224,224),"per-frame fitting remains an explicit separate mode");
++ need(preview_filename_text(fs::path(L"CENCH_12_8.png")).find(L"CENCH_12_8.png")!=std::wstring::npos,"display exact current filename");
++ need(preview_filename_text(fs::path(L"CENCH_12_8.png")).find(L"CENCH.DEF")!=std::wstring::npos,"display corresponding DEF filename");
+  auto official=official_frame_key(fs::path(L"CBOAR_5_3.png"));need(official&&official->first==L"CBOAR_5"&&official->second==3,"official creature slot filename parsing");
+  auto legacy=official_frame_key(fs::path(L"def_CBOAR_5_3__9515be1ca05b.png"));need(legacy&&legacy->first==L"CBOAR_5"&&legacy->second==3,"legacy creature slot filename compatibility");
+  auto lodName=official_frame_key(fs::path(L"CBOAR.DEF_5_3__9515be1ca05b.png"));need(lodName&&lodName->first==L"CBOAR_5"&&lodName->second==3,"official DEF replacement filename parsing");
+  register_class();State s;auto w=CreateWindowExW(0,WINDOW_CLASS,L"APNG regression",WS_POPUP,0,0,1160,760,nullptr,nullptr,GetModuleHandleW(nullptr),&s);need(w!=nullptr,"APNG regression window");
+  try{
++  need(s.groupScale&&SendMessageW(s.scaleMode,CB_GETCURSEL,0,0)==1,"common scale must be the default");
++  SendMessageW(s.scaleMode,CB_SETCURSEL,0,0);SendMessageW(w,WM_COMMAND,MAKEWPARAM(IDC_SCALE_MODE,CBN_SELCHANGE),0);need(!s.groupScale,"actual scale selector must switch to per-frame fit");
++  SendMessageW(s.scaleMode,CB_SETCURSEL,1,0);SendMessageW(w,WM_COMMAND,MAKEWPARAM(IDC_SCALE_MODE,CBN_SELCHANGE),0);need(s.groupScale,"actual scale selector must restore common group factor");
+   s.previewFrames.resize(20);SendMessageW(s.loop,BM_SETCHECK,BST_UNCHECKED,0);start_preview_playback(s,false);
+   for(int i=0;i<20;i++)SendMessageW(w,WM_TIMER,PREVIEW_TIMER,0);
+   need(s.currentFrame==19&&!s.playing,"one-shot must stop on 20/20");SendMessageW(w,WM_COMMAND,MAKEWPARAM(IDC_PLAY,BN_CLICKED),0);
+   need(s.currentFrame==0&&s.playing&&text(s.frameLabel)==L"帧 1 / 20","Play must restart a completed sequence");clear_preview(s);
+   AnimationGroup manual;manual.key=L"手动序列 1";manual.manual=true;s.items.push_back(manual);refresh_groups(s);delete_manual_group(s,0);need(s.items.empty()&&s.previewFrames.empty(),"manual removal must clear sequence and preview");
+   std::wstring pickerError;std::thread sta([&]{bool initialized=false;try{hr(CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED),"STA picker initialize");initialized=true;Com<IFileOpenDialog> dialog;hr(CoCreateInstance(CLSID_FileOpenDialog,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&dialog)),"STA picker creation");}catch(const std::exception&e){pickerError=wide(e.what());}if(initialized)CoUninitialize();});sta.join();need(pickerError.empty(),"STA folder picker factory failed: "+utf8(pickerError));
+-  DestroyWindow(w);return{{"passed",true},{"official_creature_slot_filename",true},{"legacy_filename_compatibility",true},{"official_def_replacement_filename",true},{"one_shot_replay",true},{"manual_sequence_removal",true},{"sta_folder_picker_factory",true},{"actual_folder_selection_tested",false},{"source_png_writes",0}};
++  DestroyWindow(w);return{{"passed",true},{"official_creature_slot_filename",true},{"legacy_filename_compatibility",true},{"official_def_replacement_filename",true},{"group_common_scale_switch",true},{"exact_current_def_filename",true},{"one_shot_replay",true},{"manual_sequence_removal",true},{"sta_folder_picker_factory",true},{"actual_folder_selection_tested",false},{"source_png_writes",0}};
+  }catch(...){DestroyWindow(w);throw;}
+ }
+ inline void run(HWND owner,HFONT font,const fs::path&initialFolder={},const std::wstring&initialGroup={},int initialFps=8){

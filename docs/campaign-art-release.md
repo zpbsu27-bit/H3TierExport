@@ -1,0 +1,27 @@
+# Campaign 3X package comparison and VCMI delivery
+
+The artwork pipeline lives in this H3TierExport software directory and does not import the H3 source tree. The current VCMI publisher is `scripts/campaign_vcmi_mod.py`; it creates a native VCMI Graphical mod using `content/Data3x` and `content/Sprites3x` and installs it below the configured VCMI `Mods` root.
+
+`scripts/campaign_art_release.py` is retained only to reproduce the earlier H3PNGA1 size comparison. It has **no install command**. That format is not a VCMI MOD and must not be copied into HoMM 3 Complete `H3Mods`.
+
+The final campaign manifest contains 1,739 resource keys (1,714 PCX and 25 DEF frame keys), backed by 1,736 distinct PNG files. Three CAMPSTAR frame aliases reuse existing image files.
+
+## Build the VCMI MOD
+
+```powershell
+python -B "{H3TierExport}\scripts\campaign_vcmi_mod.py" build --config "{H3TierExport}\build\experiments\campaign-art-mod-pack\CAMPAIGN-ART-IMAGES3X-PACK-20261112-R02\vcmi-campaign-mod-operation\vcmi-campaign-mod-config.json"
+```
+
+The candidate is built under the configured operation directory. Every source SHA and exact 3X geometry is checked; each staged PNG and JSON descriptor is read back before install.
+
+For every DEF sprite, the build also reads the official 1999 native resource inventory and requires an RGBA PNG at the full logical canvas ×3. The receipt records canvas, crop, origin, and the expected 3X crop rectangle; alpha outside that rectangle is rejected. Crop-only dimensions such as 96×174 for a 96×64 canvas are refused before the candidate directory is created. A mounted hero is recognized from its official five static plus five eight-frame group layout and must include all 45 slots; partial sets are refused.
+
+## Install
+
+```powershell
+python -B "{H3TierExport}\scripts\campaign_vcmi_mod.py" install --config "{H3TierExport}\build\experiments\campaign-art-mod-pack\CAMPAIGN-ART-IMAGES3X-PACK-20261112-R02\vcmi-campaign-mod-operation\vcmi-campaign-mod-config.json"
+```
+
+Install creates a new mod folder under `{VCMI}\Mods` and refuses to overwrite an existing mod or run while VCMI is active. The installed folder contains the `mod.json`, `content/Data3x`, and `content/Sprites3x` structures used by the existing VCMI H3HD mods.
+
+A successful install and SHA readback confirms the local VCMI mod files. VCMI launch and visual acceptance remain separate checks.
