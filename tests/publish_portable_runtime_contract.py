@@ -66,5 +66,27 @@ class PortableRuntimePublish(unittest.TestCase):
             self.assertEqual(Path(loaded["path"]),dist/"H3TierExport-build-receipt.json")
             self.assertEqual(loaded["binding"],binding)
 
+    def test_prune_stale_portable_runtime_copies_keeps_only_current_runtime(self):
+        build=json.loads((PRODUCT/"build/candidate/build-receipt.json").read_bytes())
+        binding=build["companion_runtime"]
+        old_dir_name=".runtime-"+"9"*64
+        with tempfile.TemporaryDirectory(prefix="portable-runtime-prune-") as directory:
+            root=Path(directory)
+            dist=root/"dist";dist.mkdir()
+            shutil.copytree(PRODUCT/binding["directory"],dist/binding["directory"])
+            old_dir=dist/old_dir_name;old_dir.mkdir()
+            (old_dir/"dummy.txt").write_text("old portable payload",encoding="utf-8")
+            arch=dist/"archive"/("release-"+"8"*64);arch.mkdir(parents=True)
+            (arch/"H3TierExport-release.json").write_text(
+                json.dumps({"companion_runtime":{"directory":old_dir_name,"manifest_sha256":"9"*64}}),
+                encoding="utf-8",
+            )
+            with patch.object(publish,"PRODUCT",root),patch.object(publish,"DIST",dist):
+                result=publish.prune_stale_portable_runtime_copies(binding)
+            self.assertFalse(old_dir.exists())
+            self.assertEqual([r["directory"] for r in result["retired"]],[old_dir_name])
+            self.assertEqual([p.name for p in dist.iterdir() if p.name.startswith(".runtime-")],
+                             [binding["directory"]])
+
 
 if __name__=="__main__":unittest.main()

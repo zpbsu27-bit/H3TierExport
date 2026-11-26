@@ -30,7 +30,7 @@ COMPANIONS = {
     "source-audit", "motion-review", "native-review", "interpolate", "motion-prepare",
     "official-motion-prepare", "quality-review",
     "creature-actions", "art-pipeline", "defpack", "cloud-animation",
-    "alpha-benchmark", "blender-actions", "creature-production", "creature-master-set", "creature-auto-pose", "hero-mounted-pose", "logical-alpha", "sheet-intake", "native-alias", "town-process-review", "town-master-prepare", "town-flag-alignment", "town-flag-review", "flag-pole-audit", "town-scene", "map-synth", "map-source-batch", "map-material-family", "asset-repair", "scale-draft", "scale-audit", "scale-layout", "sequence-temporal", "map-object-sequence", "map-sprite-mod", "creature-sequence-qa",
+    "alpha-benchmark", "blender-actions", "creature-production", "creature-master-set", "creature-auto-pose", "hero-mounted-pose", "logical-alpha", "sheet-intake", "native-alias", "town-process-review", "town-master-prepare", "town-flag-alignment", "town-flag-review", "flag-pole-audit", "town-scene", "map-synth", "map-source-batch", "map-material-family", "asset-repair", "scale-draft", "scale-audit", "scale-layout", "sequence-temporal", "map-object-sequence", "map-sprite-mod", "sprites3x-mod", "creature-sequence-qa", "hero-canvas-gate",
 }
 ACTIVE_COMPANIONS = COMPANIONS - {"quality-review"}
 
@@ -704,6 +704,44 @@ class FrozenCompanionRuntimeContract(unittest.TestCase):
         self.assertIn(stale_dir.name, result["pruned"])
         self.assertFalse(stale_dir.exists())
         self.assertTrue(active_dir.exists())
+
+    def test_prune_stale_runtimes_caps_archived_releases_to_single_runtime(self):
+        sys.path.insert(0, str(PRODUCT / "scripts"))
+        from companion_runtime import prune_stale_runtimes
+
+        current_dir = self.payload
+        arch1_dir = self.root / (".runtime-" + "2" * 64)
+        arch2_dir = self.root / (".runtime-" + "3" * 64)
+        candidate_dir = self.root / (".runtime-" + "4" * 64)
+        for d in (arch1_dir, arch2_dir, candidate_dir):
+            d.mkdir(exist_ok=True)
+            (d / "dummy.txt").write_text(d.name, encoding="utf-8")
+
+        self.release["companion_runtime"] = {"directory": current_dir.name}
+        self.write_release_document()
+        for idx, arch_dir in enumerate((arch1_dir, arch2_dir), start=1):
+            arch_release = self.dist / "archive" / ("release-" + str(idx) * 64)
+            arch_release.mkdir(parents=True, exist_ok=True)
+            (arch_release / "H3TierExport-release.json").write_text(
+                json.dumps({"companion_runtime": {"directory": arch_dir.name}}),
+                encoding="utf-8",
+            )
+
+        in_flight = prune_stale_runtimes(
+            self.root,
+            keep_directories={candidate_dir.name, current_dir.name},
+            keep_limit=2,
+        )
+        self.assertEqual(set(in_flight["pruned"]), {arch1_dir.name, arch2_dir.name})
+        self.assertEqual(set(in_flight["kept"]), {candidate_dir.name, current_dir.name})
+        self.assertTrue(candidate_dir.exists())
+        self.assertTrue(current_dir.exists())
+
+        post_publish = prune_stale_runtimes(self.root)
+        self.assertEqual(post_publish["pruned"], [candidate_dir.name])
+        self.assertEqual(post_publish["kept"], [current_dir.name])
+        self.assertTrue(current_dir.exists())
+        self.assertFalse(candidate_dir.exists())
 
 
 if __name__ == "__main__":

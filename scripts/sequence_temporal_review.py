@@ -1,8 +1,9 @@
 """Read-only temporal screening of a replay-verified anatomy layout.
 
-The inputs are already registered native-canvas candidates.  This tool compares
-only explicitly named, comparable landmark paths and declared root trajectories;
-it never infers body dimensions from alpha boxes or approves/replaces artwork.
+The inputs are registered native-canvas or native-crop candidates with full-canvas
+root coordinates. This tool compares only explicitly named, comparable landmark
+paths and declared root trajectories; it never infers body dimensions from alpha
+boxes or approves/replaces artwork.
 """
 from __future__ import annotations
 
@@ -42,24 +43,37 @@ def compare(receipt, loop_groups, spread_threshold, adjacent_threshold, root_thr
     """Compare declared paths; the receipt's layout must already be replay verified."""
     contract = receipt['sequence_contract']
     groups = contract['groups']
+    v2 = contract.get('schema') == sequence.CONTRACT_V2
     layout.need(set(loop_groups) <= set(groups), 'TEMPORAL_LOOP_GROUP_NOT_SELECTED')
     owners = {_key(item['key']): item for item in receipt['items']}
     aliases = {_key(item['key']): _key(item['owner_key']) for item in contract['aliases']}
+    alias_items = {_key(item['key']): item for item in contract['aliases']}
     logical = [_key(value) for value in contract['logical_scope']]
     layout.need(len(logical) == len(set(logical)), 'TEMPORAL_DUPLICATE_LOGICAL_SLOT')
     layout.need(set(logical) == set(owners) | set(aliases), 'TEMPORAL_SCOPE_INCOMPLETE')
     layout.need(not (set(owners) & set(aliases)), 'TEMPORAL_ALIAS_DUPLICATED')
     expanded = {}
+    external_aliases = []
     for key in logical:
         owner = aliases.get(key, key)
-        layout.need(owner in owners, 'TEMPORAL_ALIAS_OWNER_MISSING')
-        expanded[key] = (owner, owners[owner])
+        if owner in owners:
+            expanded[key] = (owner, owners[owner])
+        else:
+            alias = alias_items.get(key, {})
+            layout.need(v2 and owner not in logical and alias.get('owner_source') is not None,
+                        'TEMPORAL_ALIAS_OWNER_MISSING')
+            external_aliases.append({'key':list(key),'owner_key':list(owner),
+                                     'owner_source_sha256':alias['owner_source'].get('sha256'),
+                                     'status':'EXTERNAL_OWNER_NOT_IN_LAYOUT'})
+            expanded[key] = (owner, None)
 
     comparisons, transitions = [], []
     warnings = 0
     incomplete = 0
     for group in groups:
-        keys = sorted((k for k in logical if k[2] == group), key=lambda k: k[3])
+        group_logical = sorted((k for k in logical if k[2] == group), key=lambda k: k[3])
+        keys = [k for k in group_logical if expanded[k][1] is not None]
+        incomplete += sum(expanded[k][1] is None for k in group_logical)
         partitions = {}
         for key in keys:
             row = expanded[key][1]
@@ -139,6 +153,7 @@ def compare(receipt, loop_groups, spread_threshold, adjacent_threshold, root_thr
     return {'status': 'REVIEW_REQUIRED' if warnings else 'INCOMPLETE_EVIDENCE' if incomplete
             else 'NO_NUMERIC_WARNING', 'warning_count': warnings, 'incomplete_comparisons': incomplete,
             'comparisons': comparisons, 'transitions': transitions,
+            'external_alias_dependencies': external_aliases,
             'alpha_bbox_used_as_body_measurement': False, 'automatic_art_approval': False,
             'automatic_redraw': False, 'runtime_verified': False}
 
@@ -155,7 +170,8 @@ def _replay(req):
                 'TEMPORAL_SEQUENCE_RECEIPT_REQUIRED')
     manifest_ref = receipt['manifest']
     manifest = layout.doc(manifest_ref)
-    layout.need(manifest.get('schema') == sequence.SCHEMA, 'TEMPORAL_SEQUENCE_MANIFEST_REQUIRED')
+    layout.need(manifest.get('schema') in (sequence.SCHEMA, sequence.SCHEMA_V2),
+                'TEMPORAL_SEQUENCE_MANIFEST_REQUIRED')
     layout.need(receipt_path.name == 'receipt.json', 'TEMPORAL_LAYOUT_RECEIPT_NAME_INVALID')
     operation = receipt['operation_id']
     result = layout.execute('verify', manifest_ref, receipt_path.parent, operation)

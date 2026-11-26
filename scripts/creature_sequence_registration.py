@@ -8,13 +8,26 @@ model inference, anatomical recognition, resampling, art approval or deployment.
 """
 from __future__ import annotations
 import argparse
+import io
 import json
 from pathlib import Path
 import struct
 import sys
+from PIL import Image
 
 SCHEMA = 'h3.creature.sequence-registration.manifest.v1'
 CONTRACT = 'h3.creature.sequence-registration.contract.v1'
+SCHEMA_V2 = 'h3.creature.sequence-registration.manifest.v2'
+CONTRACT_V2 = 'h3.creature.sequence-registration.contract.v2'
+APPENDAGE_CONTRACT = 'h3.creature.appendage-contract.v1'
+PADDING_POLICY = {
+    'schema': 'h3.creature.sequence-padding-policy.v1',
+    'mode': 'integer-transparent-padding',
+    'offset_space': 'full_output_canvas_pixels',
+    'alpha_policy': 'preserve-all-positive-alpha; alpha-ge2-core-inside-crop',
+    'root_tolerance_native': 1,
+}
+CREATURE_MASTER_CANDIDATE_ROOT = Path(__file__).resolve().parents[1] / 'build' / 'experiments' / 'creature-master-set'
 
 
 def _need(value, code):
@@ -53,7 +66,9 @@ def native_frames(raw):
 
 def validate(manifest, profile, native, expected):
     import subject_scale_layout as common
-    _need(manifest.get('schema') == SCHEMA, 'SEQUENCE_SCHEMA_REQUIRED')
+    schema = manifest.get('schema')
+    _need(schema in (SCHEMA, SCHEMA_V2), 'SEQUENCE_SCHEMA_REQUIRED')
+    v2 = schema == SCHEMA_V2
     implementation=manifest.get('implementation',{})
     _need(implementation.get('schema')=='h3.creature.sequence-registration.readers.v1',
           'SEQUENCE_FROZEN_READER_BINDING_REQUIRED')
@@ -61,14 +76,53 @@ def validate(manifest, profile, native, expected):
         bound=implementation[field]
         common.pin(bound)
         _need(common.sha(executing.read_bytes())==bound['sha256'],'SEQUENCE_FROZEN_READER_DIFFERS')
-    _need(manifest.get('output_layout') == 'native-canvas', 'SEQUENCE_FULL_CANVAS_REGISTRATION_REQUIRED')
+    output_layout = manifest.get('output_layout')
+    if v2:
+        _need(output_layout in ('native-canvas', 'native-crop'),
+              'SEQUENCE_NATIVE_LAYOUT_REQUIRED')
+    else:
+        _need(output_layout == 'native-canvas', 'SEQUENCE_FULL_CANVAS_REGISTRATION_REQUIRED')
+    padding_mode = 'padding_policy' in manifest
+    if padding_mode:
+        _need(manifest.get('padding_policy') == PADDING_POLICY
+              and output_layout == 'native-canvas',
+              'SEQUENCE_PADDING_POLICY_INVALID')
     contract = manifest.get('sequence_contract', {})
-    _need(contract.get('schema') == CONTRACT, 'SEQUENCE_CONTRACT_REQUIRED')
+    _need(contract.get('schema') == (CONTRACT_V2 if v2 else CONTRACT),
+          'SEQUENCE_CONTRACT_REQUIRED')
     _need(contract.get('scale_policy') == 'anatomical-targets'
           and contract.get('camera_policy') == 'fixed-native-units'
           and contract.get('trajectory_units') == 'native_canvas_1x', 'SEQUENCE_COORDINATE_POLICY_REQUIRED')
     _need(isinstance(contract.get('root_semantics'),str) and contract['root_semantics'].strip(),
           'SEQUENCE_ROOT_SEMANTICS_REQUIRED')
+    if v2 and output_layout == 'native-crop':
+        _need(contract.get('native_crop_origin_policy') ==
+              'official_binary_def_origin_in_native_canvas_coordinates',
+              'SEQUENCE_CROP_ORIGIN_POLICY_REQUIRED')
+    if v2:
+        appendage = contract.get('appendage_contract', {})
+        _need(appendage.get('schema') == APPENDAGE_CONTRACT
+              and appendage.get('identity') in {key[1] for key in expected}
+              and isinstance(appendage.get('scope'), str) and appendage['scope'].strip(),
+              'SEQUENCE_APPENDAGE_CONTRACT_REQUIRED')
+        counts = appendage.get('expected_counts')
+        connections = appendage.get('required_connections')
+        skeleton_requirements = appendage.get('required_skeleton_paths')
+        _need(isinstance(counts, dict) and counts
+              and all(type(value) is int and value >= 0 for value in counts.values())
+              and isinstance(connections, list) and connections
+              and all(isinstance(value, str) and value for value in connections)
+              and len(set(connections)) == len(connections)
+              and isinstance(skeleton_requirements, dict) and skeleton_requirements
+              and all(isinstance(name, str) and name
+                      and type(points) is int and points >= 2
+                      for name, points in skeleton_requirements.items()),
+              'SEQUENCE_APPENDAGE_CONTRACT_INVALID')
+        root_policy = contract.get('root_motion_policy', {})
+        _need(isinstance(root_policy, dict) and set(root_policy) ==
+              {str(group) for group in contract.get('groups', [])}
+              and all(value in ('fixed', 'explicit') for value in root_policy.values()),
+              'SEQUENCE_ROOT_MOTION_POLICY_REQUIRED')
     _, raw = common.pin(contract['native_def'])
     frames = native_frames(raw)
     groups = contract.get('groups')
@@ -94,6 +148,7 @@ def validate(manifest, profile, native, expected):
     bykey = {tuple(item['key']):item for item in manifest['items']}
     offsets = [frames[key[2:]]['offset'] for key in bykey]
     _need(len(offsets)==len(set(offsets)), 'SEQUENCE_ONE_OWNER_PER_NATIVE_OFFSET_REQUIRED')
+    common_ks = set()
     for key, item in bykey.items():
         rule = profile['directions'][item['profile_direction']]
         measurement = item.get('measurement',{})
@@ -110,28 +165,129 @@ def validate(manifest, profile, native, expected):
         _need(measurement.get('annotation_author') in ('assistant','human'),
               'SEQUENCE_ANNOTATION_AUTHOR_REQUIRED')
         common.finite_pair(item.get('root_offset_native'), 'SEQUENCE_EXPLICIT_ROOT_TRAJECTORY_REQUIRED')
+        if padding_mode:
+            registration = item.get('padding_registration')
+            _need(isinstance(registration, dict)
+                  and set(registration) == {'common_k', 'offset'}
+                  and type(registration.get('common_k')) is int
+                  and 4 <= registration['common_k'] <= 96,
+                  'SEQUENCE_PADDING_REGISTRATION_REQUIRED')
+            offset = registration.get('offset')
+            _need(isinstance(offset, list) and len(offset) == 2
+                  and all(type(value) is int for value in offset),
+                  'SEQUENCE_PADDING_OFFSET_INVALID')
+            common_ks.add(registration['common_k'])
+        else:
+            _need('padding_registration' not in item,
+                  'SEQUENCE_PADDING_REGISTRATION_WITHOUT_POLICY')
         _need(item.get('source') is not None, 'SEQUENCE_SOURCE_REQUIRED')
+        if v2:
+            if contract['root_motion_policy'][str(key[2])] == 'fixed':
+                _need(item['root_offset_native'] == [0, 0],
+                      'SEQUENCE_FIXED_ROOT_MUST_NOT_MOVE')
+            trajectory = item.get('root_trajectory_review', {})
+            _need(trajectory.get('key') == list(key)
+                  and trajectory.get('coordinate_space') == 'native_canvas_1x'
+                  and trajectory.get('method') == 'manual-official-1x-root-landmark'
+                  and trajectory.get('annotation_author') in ('assistant', 'human')
+                  and trajectory.get('status') == 'VISUALLY_REVIEWED',
+                  'SEQUENCE_ROOT_TRAJECTORY_REVIEW_REQUIRED')
+            guide_ref = trajectory.get('source')
+            guide_path, guide_bytes = common.pin(guide_ref)
+            _need(guide_path.suffix.casefold() == '.png'
+                  and guide_path.stem == f'{key[2]}_{key[3]}'
+                  and guide_path.parent.name.casefold() == identity.casefold(),
+                  'SEQUENCE_ROOT_REFERENCE_MUST_BE_OFFICIAL_NATIVE_FRAME')
+            with Image.open(io.BytesIO(guide_bytes)) as guide:
+                guide.load()
+                _need(guide.format == 'PNG' and list(guide.size) == frames[key[2:]]['canvas']
+                      and guide_ref.get('pixels') == list(guide.size),
+                      'SEQUENCE_ROOT_REFERENCE_GEOMETRY_MISMATCH')
+            base_anchor = profile['directions'][item['profile_direction']]['anchor_native_canvas']
+            offset = item['root_offset_native']
+            declared_target = common.finite_pair(trajectory.get('root_target_native_canvas'),
+                                                 'SEQUENCE_ROOT_TARGET_REVIEW_REQUIRED')
+            expected_target = [base_anchor[i] + offset[i] for i in (0, 1)]
+            _need(all(abs(declared_target[i] - expected_target[i]) <= 1e-6 for i in (0, 1)),
+                  'SEQUENCE_ROOT_TRAJECTORY_TARGET_DIFFERS_FROM_LAYOUT')
+            review = item.get('limb_review', {})
+            _need(review.get('source_sha256') == item.get('source', {}).get('sha256')
+                  and review.get('reviewer') in ('assistant', 'human')
+                  and review.get('status') == 'VISUALLY_REVIEWED',
+                  'SEQUENCE_APPENDAGE_VISUAL_REVIEW_REQUIRED')
+            _need(review.get('counts') == counts,
+                  'SEQUENCE_APPENDAGE_COUNT_MISMATCH')
+            joint_reviews = review.get('connections', {})
+            _need(set(joint_reviews) >= set(connections)
+                  and all(joint_reviews.get(name) == 'CONNECTED' for name in connections),
+                  'SEQUENCE_APPENDAGE_CONNECTION_UNRESOLVED')
+            source_image = common.png(item['source'])
+            skeleton_paths = review.get('skeleton_paths', {})
+            _need(set(skeleton_paths) == set(skeleton_requirements),
+                  'SEQUENCE_SKELETON_PATH_SET_MISMATCH')
+            for name, minimum_points in skeleton_requirements.items():
+                points = skeleton_paths[name]
+                _need(isinstance(points, list) and len(points) >= minimum_points,
+                      'SEQUENCE_SKELETON_PATH_INCOMPLETE')
+                for point in points:
+                    coordinates = common.finite_pair(point, 'SEQUENCE_SKELETON_POINT_INVALID')
+                    _need(all(0 <= coordinates[index] < source_image.size[index]
+                              for index in (0, 1)),
+                          'SEQUENCE_SKELETON_POINT_OUTSIDE_SOURCE')
         source_path = common.path(item['source']['path'])
-        _need(not ({p.casefold() for p in source_path.parts} &
-                   {'codex-prepared','codex-3x','output-3x','creature-master-set'}),
+        source_parts = {p.casefold() for p in source_path.parts}
+        _need(not (source_parts & {'codex-prepared','codex-3x','output-3x'}),
               'SEQUENCE_DERIVATIVE_IS_NOT_MASTER')
+        if 'experiments' in source_parts:
+            resolved_source = source_path.resolve(strict=True)
+            candidate_root = CREATURE_MASTER_CANDIDATE_ROOT.resolve()
+            flat_operation_file = resolved_source.parent.parent.resolve() == candidate_root
+            identity_subdir_file = (resolved_source.parent.name.casefold() == identity.casefold()
+                                    and resolved_source.parent.parent.parent.resolve() == candidate_root)
+            _need(resolved_source.suffix.casefold() == '.png'
+                  and resolved_source.stem == f'{key[2]}_{key[3]}'
+                  and (flat_operation_file or identity_subdir_file),
+                  'SEQUENCE_CANDIDATE_OUTSIDE_MASTER_SET_OPERATION')
+    if padding_mode:
+        _need(len(common_ks) == 1, 'SEQUENCE_PADDING_COMMON_K_MISMATCH')
     aliases = contract.get('aliases',[])
     _need(isinstance(aliases,list), 'SEQUENCE_ALIAS_LIST_REQUIRED')
     covered = set(expected)
     for alias in aliases:
         key = tuple(alias['key']); owner = tuple(alias['owner_key'])
-        _need(key in scope and key not in covered and owner in bykey, 'SEQUENCE_ALIAS_SCOPE_INVALID')
+        _need(key in scope and key not in covered, 'SEQUENCE_ALIAS_SCOPE_INVALID')
+        if owner in bykey:
+            owner_source = bykey[owner]['source']
+        else:
+            _need(v2 and owner not in scope and owner in native,
+                  'SEQUENCE_EXTERNAL_ALIAS_OWNER_UNBOUND')
+            external = native[owner]
+            external_frame = frames.get(owner[2:])
+            _need(external_frame is not None
+                  and all(external.get(field) == external_frame[field]
+                          for field in ('canvas', 'crop', 'anchor'))
+                  and str(external.get('resource', '')).casefold() ==
+                      external_frame['resource'].casefold(),
+                  'SEQUENCE_EXTERNAL_ALIAS_NATIVE_GEOMETRY_MISMATCH')
+            owner_source = alias.get('owner_source')
+            _need(owner_source is not None, 'SEQUENCE_EXTERNAL_ALIAS_OWNER_UNBOUND')
+            common.png(owner_source)
         _need(frames[key[2:]]['offset']==frames[owner[2:]]['offset'], 'SEQUENCE_ALIAS_OFFSET_MISMATCH')
-        owner_source = bykey[owner]['source']; source = alias['source']
+        source = alias['source']
         common.png(source)
         _need(source['sha256']==owner_source['sha256'] and source['pixels']==owner_source['pixels'],
               'SEQUENCE_ALIAS_SOURCE_BYTES_DIFFER')
         covered.add(key)
     _need(covered==scope, 'SEQUENCE_LOGICAL_SLOT_OR_ALIAS_MISSING')
-    return {'schema':CONTRACT, 'native_def':contract['native_def'], 'logical_slots':len(scope),
+    return {'schema':contract['schema'], 'native_def':contract['native_def'], 'logical_slots':len(scope),
             'unique_offset_owners':len(bykey), 'root_semantics':contract['root_semantics'],
             'scale_from_alpha_bbox':False, 'independent_per_frame_contain':False,
             'pose_direction_targets_explicit':True, 'root_trajectory_explicit':True,
+            'limb_count_visual_reviews_verified':len(bykey) if v2 else None,
+            'crop_origin_policy':contract.get('native_crop_origin_policy') if v2 else None,
+            'integer_transparent_padding':padding_mode,
+            'common_k':next(iter(common_ks)) if padding_mode else None,
+            'padding_root_tolerance_native':PADDING_POLICY['root_tolerance_native'] if padding_mode else None,
             'body_semantics_automatically_recognized':False, 'art_approved':False}
 
 
@@ -145,13 +301,15 @@ def handoff(manifest_ref, outdir, *, create=True):
     _need(all(item['status']=='LOSSLESS_LAYOUT_READY' for item in receipt['items']),
           'SEQUENCE_FIT_CONFLICT_NO_EXPORT_REQUEST')
     items = []
+    padded = manifest.get('padding_policy') == PADDING_POLICY
     for item in receipt['items']:
         p = root/item['output_name']
         _need(common.sha(p.read_bytes())==item['output_png_sha256'], 'SEQUENCE_PREPARED_SHA_DRIFT')
         key = item['key']
         items.append({'id':f'{key[1]}_{key[2]}_{key[3]}','key':key,
                       'source_png':str(p),'source_sha256':item['output_png_sha256'],
-                      'source_layout':'native-canvas','output_layout':'native-crop',
+                      'source_layout':manifest.get('output_layout', 'native-crop'),
+                      'output_layout':'native-canvas' if padded else 'native-crop',
                       'registration':'strict-aspect','render_scales':[3]})
     review = {'schema':'h3.native-review.batch-manifest.v1',
               'official_inventory':manifest['native_inventory'],'items':items}
@@ -182,7 +340,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         ref = {'path':str(common.path(args.manifest)),'sha256':args.manifest_sha256}
-        _need(common.doc(ref).get('schema')==SCHEMA,'SEQUENCE_SCHEMA_REQUIRED')
+        _need(common.doc(ref).get('schema') in (SCHEMA, SCHEMA_V2), 'SEQUENCE_SCHEMA_REQUIRED')
         if args.renderer:
             common.pin({'path':args.renderer,'sha256':args.renderer_sha256})
         result = common.execute(args.action,ref,args.outdir,args.operation_id)

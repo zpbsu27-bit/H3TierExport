@@ -5,8 +5,8 @@
 IDI_APP_ICON ICON "H3TierExport.ico"
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,3,44,0
- PRODUCTVERSION 1,3,44,0
+ FILEVERSION 1,3,60,0
+ PRODUCTVERSION 1,3,60,0
  FILEFLAGSMASK 0x3fL
  FILEFLAGS 0x0L
  FILEOS 0x40004L
@@ -19,11 +19,11 @@ BEGIN
   BEGIN
    VALUE "CompanyName", "H3HD Project\0"
    VALUE "FileDescription", "H3TierExport - 高清母版三倍率导出器\0"
-   VALUE "FileVersion", "1.3.44\0"
+   VALUE "FileVersion", "1.3.60\0"
    VALUE "InternalName", "H3TierExport\0"
    VALUE "OriginalFilename", "H3TierExport.exe\0"
    VALUE "ProductName", "H3TierExport\0"
-   VALUE "ProductVersion", "1.3.44\0"
+   VALUE "ProductVersion", "1.3.60\0"
   END
  END
  BLOCK "VarFileInfo"

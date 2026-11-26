@@ -36,8 +36,8 @@ inline const std::array<CompanionRuntimeResource,3>& companion_runtime_resources
  return resources;
 }
 
-inline const std::array<CompanionCommand,40>& companion_commands(){
- static const std::array<CompanionCommand,40> commands={{
+inline const std::array<CompanionCommand,42>& companion_commands(){
+ static const std::array<CompanionCommand,42> commands={{
   {"creature-auto-pose",L"creature_auto_pose.py",{L"numpy",L"PIL"},"check|run|verify --manifest PNG-OR-FROZEN-JSON --manifest-sha256 SHA --outdir NEW-PATH --operation-id ID","Local human-pose and explicitly grouped proportional registration candidates with source/model SHA bindings and flip consistency. Review only; no source edits, native K, art approval, master or 3X publication.",true,{},false,""},
   {"hero-mounted-pose",L"hero_mounted_pose.py",{L"numpy",L"PIL"},"freeze --inventory PATH --inventory-sha256 SHA --identity AH00_ --masters-dir PATH --operation-id ID | check|run|verify --manifest PNG-OR-FROZEN-JSON --manifest-sha256 SHA --outdir NEW-PATH --operation-id ID","Local separate horse and rider pose candidates and grouped proportional registration previews; does not infer native ground or approve/modify artwork.",true,{},false,""},
   {"sequence-temporal",L"sequence_temporal_review.py",{L"numpy",L"PIL"},"freeze --layout-receipt PATH --layout-receipt-sha256 SHA --operation-id ID [--loop-group N --root-step-warn-native N] | check|run|verify --manifest PATH --manifest-sha256 SHA --outdir NEW-PATH --operation-id ID","Replay verified anatomy layout and flag within-group landmark spread, adjacent change and explicitly declared loop/root steps. Review only; no bbox sizing, automatic art approval or image changes.",true,{},false,""},
@@ -77,6 +77,8 @@ inline const std::array<CompanionCommand,40>& companion_commands(){
   {"creature-master-set",L"creature_master_set.py",{L"numpy",L"PIL"},"check|run|verify --manifest PLAN.json --manifest-sha256 SHA --outdir NEW-ROOT --operation-id ID","Audit exact native DEF-slot coverage, official extraction/descriptor references and source geometry; normalize pinned genuine creature masters by uniform downscale only; keep anatomy review and native/game approval separate.",true,{},false,""},
   {"map-object-sequence",L"map_object_sequence.py",{L"PIL"},"freeze --identity DEF --group N --frames-dir FULL-CANVAS-3X-DIR --operation-id ID [--repeat-each N] | check|run|verify --manifest PATH --manifest-sha256 SHA --outdir NEW-ROOT --operation-id ID","For an official single-frame adventure-object DEF group, freeze authored full-canvas 3X frames and the 1999 native authority; emit matched Sprites/Sprites3x sequences plus static 1X fallbacks into an isolated MOD-overlay candidate. Never edits masters, formal 3X, MODs, or the original DEF/LOD; human animation review remains required.",true,{},false,""},
   {"map-sprite-mod",L"map_sprite_mod_packager.py",{L"PIL"},"freeze --identity ID --batch PATH --batch-sha256 SHA --verify-report PATH --verify-report-sha256 SHA --operation-id ID --candidate-root NEW-PATH --mod-id ID --out NEW.json | check|run --manifest PATH --manifest-sha256 SHA --operation-id ID | verify --manifest PATH --manifest-sha256 SHA --operation-id ID --receipt PATH --receipt-sha256 SHA","Package a VERIFIED native-authority 3X mounted-hero expansion as an isolated VCMI MOD candidate. Recheck the 1999 inventory, identity checkpoint, exact 45 slots, full canvas ×3, crop/origin Alpha bounds, and source/output receipts; copy PNG bytes unchanged. No crop, pad, centering, resampling, install, or overwrite.",true,{},false,""},
+  {"sprites3x-mod",L"sprites3x_mod_sync.py",{L"numpy",L"PIL"},"freeze --identity DEF --sprites3x-root PATH --batch PATH --batch-sha256 SHA --verify-report PATH --verify-report-sha256 SHA --operation-id ID --outdir NEW-ROOT | check|run --manifest PATH --manifest-sha256 SHA --operation-id ID | verify --manifest PATH --manifest-sha256 SHA --operation-id ID --receipt PATH --receipt-sha256 SHA","Gate static VCMI Sprites3x sequences against successful full-canvas 3X expansion using static-structure-dynamic-fx-v2, static-base-dynamic-overlay-v1/v2 or the sealed authored-effect-ROI contract. BASE contracts validate frame0 followed by the current frame; v2 checks official fixed-pixel stability and per-frame FX size/anchor, while authored ROI limits changes to a SHA-pinned effect region and checks brightness/size/anchor pulses. A frame or descriptor drift blocks check as REPROCESS_REQUIRED; run rebuilds an isolated candidate from verified source bytes. Never overwrites or installs the live MOD.",true,{},false,""},
+  {"hero-canvas-gate",L"hero_canvas_gate.py",{L"PIL"},"--batch PATH --batch-sha256 SHA --mode check|verify|run [--outdir NEW-DIR] [--report NEW.json]","Mandatory post-export full-canvas x3 + origin x3 gate for mounted-hero AH* DEFs against the built-in 1999 Complete DEF geometry. check/verify are read-only and fail closed on crop x3 collapse, wrong size, or alpha outside the official crop; run losslessly re-pads collapsed crop x3 or clamps only <=64 outside-crop pixels with alpha <=8 into a new isolated candidate directory. Larger/visible out-of-crop artwork remains blocked. CLI and GUI expand/expand-verify run the read-only gate automatically for every AH* export batch. Never edits masters, formal 3X, MOD, or the original DEF/LOD in place.",true,{"flag-pole-reference"},false,""},
   {"creature-sequence-qa",L"creature_sequence_qa.py",{L"numpy",L"PIL"},"inspect <unit-dir> [--identity ID] [--expected-keyframes N] | stabilize <raw-dir> <target-dir> [--identity ID] [--backup-dir PATH]","Run full creature 5-frame sequence quality gate (1999 naming, alpha/transparency, rigid registration, scale/ground-anchor consistency, novel color, banned head nod/shake, VCMI animation manifest).",true,{},false,""}
  }};
  return commands;
@@ -89,7 +91,7 @@ inline Json companion_capabilities(){
    {"ui-smoke","Check native UI construction without user interaction."},{"checkerboard-alpha","Remove an edge-confirmed Gemini checkerboard into a new RGBA PNG evidence directory."},{"plan","Freeze one or more source batches into a plan."},
   {"check","Preflight a plan without writing image outputs."},{"approve","Record explicit approval for one exact master and crop contract."},
   {"run","Export approved master tiers."},{"verify","Verify existing export outputs and receipts."},
-  {"bench","Run native resampling benchmarks."},{"expand-plan","Freeze a CPU master-expansion batch."},
+  {"bench","Run native resampling benchmarks."},{"expand-plan","Freeze a CPU master-expansion batch; static-FX v2 requires a complete official 1X frame inventory, one shared group transform, a measurable static base, and an official-bounded FX motion envelope."},
   {"expand-check","Preflight a master-expansion batch."},{"expand","Run a master-expansion batch."},
   {"expand-verify","Verify a master-expansion batch."},{"motion-plan","Freeze an explicit motion spec into a batch."},
   {"motion-check","Preflight a motion batch."},{"motion-probe","Probe motion dependencies and estimates without writing frames."},
@@ -434,6 +436,51 @@ inline int run_companion_command(const std::string& name,const std::vector<std::
  if(winError==ERROR_TIMEOUT){companion_error("TIMED_OUT","COMPANION_TIMED_OUT","Companion exceeded its deadline; its owned process tree was stopped and partial artifacts require inspection");return 124;}
  if(winError!=ERROR_SUCCESS)return companion_error("DEPENDENCY_MISSING","COMPANION_START_FAILED","Could not start companion process; Win32 error="+std::to_string(winError),"python",runtime.executable);
  return (int)childCode;
+}
+
+inline bool expansion_batch_contains_mounted_hero(const Json& batch){
+ if(!batch.is_object()||!batch.contains("items")||!batch.at("items").is_array())return false;
+ for(const auto& item:batch.at("items")){
+  if(!item.is_object()||!item.contains("source")||!item.at("source").is_string())continue;
+  auto identity=path(item.at("source").get<std::string>()).parent_path().filename().wstring();
+  if(identity.size()>=2&&((identity[0]==L'A'||identity[0]==L'a')&&(identity[1]==L'H'||identity[1]==L'h')))return true;
+ }
+ return false;
+}
+
+inline Json apply_mounted_hero_export_gate(const Json& batch,Json report){
+ if(report.value("status",std::string{})=="PREFLIGHT_BLOCKED"||!expansion_batch_contains_mounted_hero(batch))return report;
+ auto receiptDirectory=clean_path(path(batch.at("receipt_directory").get<std::string>()));
+ fs::create_directories(receiptDirectory);
+ const auto token=std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64());
+ fs::path batchSnapshot,gateReceipt;
+ for(unsigned suffix=0;suffix<10000;suffix++){
+  const auto stem=L"hero-canvas-gate-"+token+L"-"+std::to_wstring(suffix);
+  auto candidateBatch=receiptDirectory/(stem+L"-batch.json");
+  auto candidateReceipt=receiptDirectory/(stem+L"-receipt.json");
+  if(!fs::exists(candidateBatch)&&!fs::exists(candidateReceipt)){
+   batchSnapshot=std::move(candidateBatch);gateReceipt=std::move(candidateReceipt);break;
+  }
+ }
+ need(!batchSnapshot.empty()&&!gateReceipt.empty(),"HERO_GATE_EVIDENCE_PATH_EXHAUSTED");
+ write_json_new(batchSnapshot,batch);
+ const int exitCode=run_companion_command("hero-canvas-gate",{
+  "--batch",str(batchSnapshot),"--batch-sha256",sha(read_all(batchSnapshot)),
+  "--mode","verify","--report",str(gateReceipt),"--quiet"});
+ Json gateReport;
+ if(fs::is_regular_file(gateReceipt))gateReport=read_json(gateReceipt);
+ else gateReport={{"schema","h3.hero-canvas-gate.error.v1"},{"status","FAILED"},
+                  {"error","Gate process returned without a receipt"},{"exit_code",exitCode}};
+ const bool passed=exitCode==0&&gateReport.value("status",std::string{})=="PASS";
+ report["hero_canvas_gate"]=passed?"PASS":"BLOCKED";
+ report["hero_canvas_gate_receipt_path"]=str(gateReceipt);
+ report["hero_canvas_gate_batch_snapshot"]=str(batchSnapshot);
+ report["hero_canvas_gate_receipt"]=gateReport;
+ if(!passed){
+  report["failed"]=report.value("failed",0)+1;
+  report["status"]="COMPLETED_WITH_FAILURES";
+ }
+ return report;
 }
 
 inline bool is_companion_command(const std::string& name){

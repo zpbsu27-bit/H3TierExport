@@ -3,7 +3,7 @@
 **A local, evidence-oriented high-resolution asset workbench for Heroes of Might and Magic III Complete / HD Edition.**
 **面向《英雄无敌 III》Complete / HD Edition 的本地高清素材处理与证据工作台。**
 
-- Version: 1.3.44
+- Version: 1.3.64
 - Platform: Windows 10/11 x64
 - Core license: MIT (see `LICENSE`)
 - Third-party components: see `THIRD_PARTY_NOTICES.md`
@@ -27,7 +27,8 @@ H3TierExport 不是生图软件，也不自动决定画面艺术质量。它负�
 - **生物工作流**：生物母版集、静态槽位、landmark、整组动作、动作时序、姿态候选与序列复核。
 - **地图与城镇**：地图材质族、道路/河流合法邻接、城镇母版、城镇旗面复核。
 - **旗杆审计**：内置 1999 Complete `H3sprite.lod` 的 DEF/逻辑帧画布、裁片和原点，辅助判断旗面与杆顶关系。
-- **VCMI MOD 候选**：把已通过 `expand-verify` 的动作批次打包为隔离的 VCMI MOD 候选；不安装、不覆盖现有 MOD。
+- **VCMI MOD 候选与同步**：`map-sprite-mod`、`sprites3x-mod` 支持将通过完整帧、`CShowableAnim::BASE` 叠层或 authored-FX ROI v2 合同的批次打包或同步为隔离的 VCMI `Sprites3x` MOD 候选；不安装、不覆盖现有 MOD。
+- **骑马英雄画布门与可见尺度硬门**：`hero-canvas-gate` 对 `AH*` 骑马英雄强制校验 `canvas×3` / `crop×3` / `origin×3` 与边缘滤波清理；`independent-static-frame-catalog-v1` 执行 95% 可见尺度硬门。
 - **素材抢救与质量检查**：批量档案、透明边缘、Alpha 逻辑、颜色/材质漂移、逐项比较图。
 - **可复跑回执**：输入清单、输入 SHA、构建/测试回执、输出 SHA、独立 verify 收据。
 
@@ -90,11 +91,11 @@ venv-win/             本地 Python 虚拟环境（不随仓库分发）
 
 ### 6. 运行时保留策略
 
-每个发行版会按 EXE 哈希冻结一个 `.runtime-<SHA>`，防止 EXE 与 Python companion 混版；旧 runtime 只用于回滚，不是缓存。建议只保留“当前 + 上一个版本”：
+每个发行版会按 EXE 哈希冻结一个 `.runtime-<SHA>`，防止 EXE 与 Python companion 混版：
 
-1. 把较旧的 `dist/archive/release-*` 移入你的待删除/归档区；
-2. 在仓库根运行 `python -B scripts/companion_runtime.py --prune --keep 2`；
-3. `dist/` 中不再被当前/上一版引用的旧 `.runtime-*` 也移入归档区。
+- `scripts/build.py` 在构建期间仅临时保留当前候选运行时与（如有）`dist/` 现行发布的运行时，自动淘汰更早版本；
+- `scripts/publish.py` 发布校验完成后自动以 `keep_limit=1` 清理根目录及 `dist/` 的旧 `.runtime-*`，各自仅保留当前版本这 **1 个** `.runtime-<SHA>`；
+- `python -B scripts/companion_runtime.py --prune` 默认 `--keep 1`（如需额外保留回滚版本，可显式传入 `--keep N`）。
 
 不要移走 `dist/H3TierExport-release.json` 当前绑定的 `.runtime-<SHA>`，否则 companion 功能会报找不到运行负载。
 
@@ -124,7 +125,8 @@ Its job is to answer: *are identity, geometry, provenance and output consistent?
 - **Creature workflows**: master sets, static slots, landmarks, grouped actions, motion timing, pose candidates and sequence review.
 - **Maps and towns**: material families, legal road/river adjacency, town masters, town-flag review.
 - **Flag-pole audit**: built-in canvas/crop/origin data from the 1999 Complete `H3sprite.lod` DEF inventory.
-- **VCMI MOD candidates**: package an `expand-verify` action batch into an isolated VCMI MOD candidate; never install or overwrite an existing MOD.
+- **VCMI MOD candidates & sync**: `map-sprite-mod` and `sprites3x-mod` package or sync batches verified under full-frame, `CShowableAnim::BASE` overlay, or authored-FX ROI v2 contracts into isolated VCMI `Sprites3x` candidates; never install or overwrite an existing MOD.
+- **Mounted-hero canvas gate & visible-scale hard gates**: `hero-canvas-gate` enforces `canvas×3` / `crop×3` / `origin×3` bounds and bounded edge-filter cleanup for `AH*` mounted heroes; `independent-static-frame-catalog-v1` enforces a 95% visible-scale floor.
 - **Asset repair and quality checks**: batch archives, alpha edges, logical alpha, colour/material drift, side-by-side review images.
 - **Reproducible receipts**: input inventory, input SHA-256, build/test receipts, output SHA-256, independent verify receipts.
 
@@ -187,11 +189,11 @@ venv-win/            Local Python virtual environment (not distributed)
 
 ### 6. Runtime retention
 
-Each release freezes one `.runtime-<SHA>` directory because the EXE embeds the runtime manifest hash. Old runtimes are rollback data, not cache. Keep only the current and previous release:
+Each release freezes one `.runtime-<SHA>` directory because the EXE embeds the runtime manifest hash:
 
-1. Move older `dist/archive/release-*` directories to your review/archive area.
-2. From the repository root run `python -B scripts/companion_runtime.py --prune --keep 2`.
-3. Move old `dist/.runtime-*` copies that are no longer referenced by the current or previous release to the archive area.
+- `scripts/build.py` temporarily retains at most the candidate runtime plus the currently published `dist/` runtime during an in-flight build, retiring older sidecars automatically.
+- `scripts/publish.py` automatically prunes both root `.runtime-*` (`keep_limit=1`) and stale `dist/.runtime-*` copies after verification, leaving exactly **one** `.runtime-<SHA>` in each location.
+- `python -B scripts/companion_runtime.py --prune` defaults to `--keep 1` (pass `--keep N` explicitly if you want to retain rollback sidecars).
 
 Do not remove the `.runtime-<SHA>` referenced by the current `dist/H3TierExport-release.json`; companion commands will fail with a missing-runtime error.
 

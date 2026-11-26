@@ -3,7 +3,7 @@
 #include "gpu.hpp"
 #include <iostream>
 namespace h3tier {
-inline constexpr const char* VERSION="1.3.44";
+inline constexpr const char* VERSION="1.3.64";
 inline Json default_settings(){return{{"backend","cpu"},{"workers",std::min(32u,std::max(1u,std::thread::hardware_concurrency()))},{"memory_gib",64},{"gpu_memory_mib",0},{"adapter",-1},{"filter","h3-quality"},{"space","linear"},{"png_filter","adaptive"}};}
 inline Json view_contract(const Json&j){return{{"id",j.at("id")},{"master",j.at("master")},{"master_sha256",j.at("master_sha256")},{"views",j.at("views")},{"source_batch_sha256",j.at("source_batch_sha256")}};}
 inline fs::path native_name(const Json&key){need(key.is_array()&&key.size()==4,"native key requires four components");auto kind=key[0].get<std::string>(),id=token(key[1].get<std::string>());if(kind=="pcx"){need(key[2].is_null()&&key[3].is_null(),"PCX key cannot have frame");return path("Pcx/"+id+".png");}need(kind=="def","unknown native kind");int g=integer(key[2],0,65535,"group"),f=integer(key[3],0,65535,"frame");return path("Defs/"+id+".DEF/"+std::to_string(g)+"_"+std::to_string(f)+".png");}

@@ -21,6 +21,7 @@ from review_motion_sequence import component_regions
 QA_SCHEMA = 'h3.creature.sequence-qa.report.v1'
 STABILIZE_SCHEMA = 'h3.creature.sequence-stabilize.receipt.v1'
 SLOT_RE = re.compile(r'^(\d+)_(\d+)\.png$', re.IGNORECASE)
+ART_TRASH_ROOT = Path(r'{VX-root}\H3美术素材\待删除')
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -546,6 +547,10 @@ def safe_backup_existing(target_path: Path, backup_root: Path, rel_key: str):
         return None
     if backup_root is None:
         raise ValueError(f'TARGET_EXISTS_BACKUP_DIR_REQUIRED:{target_path}')
+    backup_root = Path(backup_root).resolve()
+    art_trash_root = ART_TRASH_ROOT.resolve()
+    if backup_root == art_trash_root or art_trash_root not in backup_root.parents:
+        raise ValueError(f'ART_BACKUP_DIR_OUTSIDE_H3_ART_TRASH:{backup_root}')
     before_sha = sha256_file(target_path)
     dest = backup_root / rel_key
     if dest.exists():
@@ -917,7 +922,7 @@ def main(argv=None) -> int:
     parser.add_argument('--unit-dir', help='Single unit directory to inspect or target')
     parser.add_argument('--masters-root', help='Root directory containing multiple unit directories')
     parser.add_argument('--raw-root', help='Raw/pristine frames root (for stabilize)')
-    parser.add_argument('--backup-dir', help='Backup directory under 待删除/<batch> before writing')
+    parser.add_argument('--backup-dir', help='Backup directory under {VX-root}\\H3美术素材\\待删除/<unique-batch> before writing art frames')
     parser.add_argument('--identity', action='append', help='Specific unit identity name(s)')
     parser.add_argument('--expected-keyframes', type=int, default=5)
     parser.add_argument('--lock-y-frac', type=float, default=0.50)

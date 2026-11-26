@@ -273,9 +273,17 @@ def build_mod(config_path: Path) -> dict:
             or any(not isinstance(x, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{1,63}", x) for x in soft_depends)
             or len(set(soft_depends)) != len(soft_depends)):
         raise ValueError("invalid VCMI soft dependency list")
+    mod_name = config.get("mod_name", "H3HD Campaign Art 3X")
+    mod_description = config.get(
+        "mod_description",
+        "3X campaign territory tiles, story and transition images, campaign controls, combination rewards, and campaign frame art from the H3HD campaign masters. Requires HD textures and 3x scaling.",
+    )
+    if (not isinstance(mod_name, str) or not mod_name.strip()
+            or not isinstance(mod_description, str) or not mod_description.strip()):
+        raise ValueError("VCMI mod_name and mod_description must be non-empty strings")
     mod_json = {
-        "name": "H3HD Campaign Art 3X",
-        "description": "3X campaign territory tiles, story and transition images, campaign controls, combination rewards, and campaign frame art from the H3HD campaign masters. Requires HD textures and 3x scaling.",
+        "name": mod_name,
+        "description": mod_description,
         "version": "0.1",
         "author": "H3HD",
         "contact": "",
@@ -416,7 +424,14 @@ def install_mod(config_path: Path) -> dict:
     if receipt_out.exists():
         raise FileExistsError("VCMI install receipt already exists; preserve and inspect: " + str(receipt_out))
     running = query_vcmi_processes(vcmi_root)
-    if running:
+    allow_hot_install = config.get("allow_hot_install", False)
+    hot_install_authorization = config.get("hot_install_authorization")
+    if type(allow_hot_install) is not bool:
+        raise ValueError("allow_hot_install must be a boolean")
+    if allow_hot_install and (not isinstance(hot_install_authorization, str)
+                              or not hot_install_authorization.strip()):
+        raise ValueError("hot_install_authorization is required when allow_hot_install is true")
+    if running and not allow_hot_install:
         raise RuntimeError("VCMI_INSTALL_BLOCKED_GAME_RUNNING: " + ", ".join(running))
     if not source.is_dir() or not source.is_relative_to(Path(config["candidate_root"]).resolve()):
         raise ValueError("candidate mod root is missing or outside the isolated tool operation")
@@ -450,6 +465,11 @@ def install_mod(config_path: Path) -> dict:
         "native_inventory_sha256": receipt["native_inventory"]["sha256"],
         "native_geometry_contract": receipt["native_geometry_contract"],
         "mounted_hero_batches": receipt["mounted_hero_batches"],
+        "hot_install_requested": allow_hot_install,
+        "installed_while_vcmi_running": bool(running),
+        "vcmi_processes_observed": running,
+        "hot_install_authorization": hot_install_authorization if running else None,
+        "current_session_reload_verified": False,
         "runtime_accepted": False,
     }
     with receipt_out.open("x", encoding="utf-8", newline="\n") as stream:
@@ -487,6 +507,13 @@ def update_mod(config_path: Path) -> dict:
     config_path = Path(config_path)
     assert_plain(config_path)
     config, _, _ = load_config(config_path)
+    allow_hot_update = config.get("allow_hot_update", False)
+    hot_update_authorization = config.get("hot_update_authorization")
+    if type(allow_hot_update) is not bool:
+        raise ValueError("allow_hot_update must be a boolean")
+    if allow_hot_update and (not isinstance(hot_update_authorization, str)
+                             or not hot_update_authorization.strip()):
+        raise ValueError("hot_update_authorization is required when allow_hot_update is true")
     receipt_path = Path(config["candidate_root"]) / "vcmi-mod-build-receipt.json"
     assert_plain(receipt_path)
     build_receipt = json.loads(receipt_path.read_text(encoding="utf-8-sig"))
@@ -521,7 +548,8 @@ def update_mod(config_path: Path) -> dict:
         raise FileNotFoundError("installed campaign mod is missing: " + str(target))
     assert_plain(target)
     old_mod_json = json.loads((target / "mod.json").read_text(encoding="utf-8-sig"))
-    if old_mod_json.get("name") != "H3HD Campaign Art 3X" or old_mod_json.get("modType") != "Graphical":
+    expected_mod_name = config.get("mod_name", "H3HD Campaign Art 3X")
+    if old_mod_json.get("name") != expected_mod_name or old_mod_json.get("modType") != "Graphical":
         raise ValueError("installed mod identity does not match campaign update target")
     actual_old_rows = directory_inventory(target)
     if actual_old_rows != expected_rows:
@@ -540,9 +568,12 @@ def update_mod(config_path: Path) -> dict:
     if backup.exists():
         raise FileExistsError("previous mod backup path already exists: " + str(backup))
 
-    running = query_vcmi_processes(vcmi_root)
-    if running:
-        raise RuntimeError("VCMI_UPDATE_BLOCKED_GAME_RUNNING: " + ", ".join(running))
+    running_preflight = query_vcmi_processes(vcmi_root)
+    concurrent_writers = [name for name in running_preflight if name != "VCMI_client.exe"]
+    if concurrent_writers:
+        raise RuntimeError("VCMI_UPDATE_BLOCKED_CONCURRENT_WRITER: " + ", ".join(concurrent_writers))
+    if running_preflight and not allow_hot_update:
+        raise RuntimeError("VCMI_UPDATE_BLOCKED_GAME_RUNNING: " + ", ".join(running_preflight))
 
     expected_new_rows = sorted(
         ({"path": item["path"], "bytes": item["bytes"], "sha256": item["sha256"]}
@@ -568,6 +599,12 @@ def update_mod(config_path: Path) -> dict:
         "previous_inventory_path": str(expected_inventory_path),
         "previous_inventory_sha256": expected_inventory_sha,
         "candidate_manifest_sha256": build_receipt["manifest_sha256"],
+        "hot_update_requested": allow_hot_update,
+        "hot_update_authorization": hot_update_authorization if allow_hot_update else None,
+        "vcmi_processes_observed_at_preflight": running_preflight,
+        "vcmi_processes_observed_before_commit": [],
+        "updated_while_vcmi_running": False,
+        "current_session_reload_verified": False,
     }
     with journal_path.open("x", encoding="utf-8", newline="\n") as stream:
         json.dump(journal, stream, ensure_ascii=False, indent=2)
@@ -578,10 +615,29 @@ def update_mod(config_path: Path) -> dict:
     old_moved = False
     new_moved = False
     try:
-        # Recheck immediately before the two same-volume directory renames.
-        running = query_vcmi_processes(vcmi_root)
-        if running:
-            raise RuntimeError("VCMI_UPDATE_BLOCKED_GAME_RUNNING: " + ", ".join(running))
+        # Recheck process ownership and both trees immediately before the two
+        # same-volume directory renames. VCMI_client may stay active only when
+        # the user explicitly enabled hot update in the frozen config.
+        running_before_commit = query_vcmi_processes(vcmi_root)
+        concurrent_writers = [name for name in running_before_commit if name != "VCMI_client.exe"]
+        if concurrent_writers:
+            raise RuntimeError("VCMI_UPDATE_BLOCKED_CONCURRENT_WRITER: " + ", ".join(concurrent_writers))
+        if running_before_commit and not allow_hot_update:
+            raise RuntimeError("VCMI_UPDATE_BLOCKED_GAME_RUNNING: " + ", ".join(running_before_commit))
+        if directory_inventory(target) != expected_rows:
+            raise ValueError("installed campaign mod changed immediately before update")
+        if directory_inventory(source) != expected_new_rows:
+            raise ValueError("VCMI update candidate changed immediately before update")
+        journal["vcmi_processes_observed_before_commit"] = running_before_commit
+        journal["updated_while_vcmi_running"] = bool(running_before_commit)
+        journal["commit_mode"] = "HOT_ATOMIC_DIRECTORY_REPLACE" if running_before_commit else "IDLE_ATOMIC_DIRECTORY_REPLACE"
+        journal_temp = journal_path.with_name(journal_path.name + ".precommit")
+        with journal_temp.open("x", encoding="utf-8", newline="\n") as stream:
+            json.dump(journal, stream, ensure_ascii=False, indent=2)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(journal_temp, journal_path)
         os.rename(target, backup)
         old_moved = True
         os.rename(source, target)
@@ -615,6 +671,12 @@ def update_mod(config_path: Path) -> dict:
             "native_inventory_sha256": build_receipt["native_inventory"]["sha256"],
             "native_geometry_contract": build_receipt["native_geometry_contract"],
             "mounted_hero_batches": build_receipt["mounted_hero_batches"],
+            "hot_update_requested": allow_hot_update,
+            "updated_while_vcmi_running": bool(running_before_commit),
+            "vcmi_processes_observed_at_preflight": running_preflight,
+            "vcmi_processes_observed_before_commit": running_before_commit,
+            "hot_update_authorization": hot_update_authorization if running_before_commit else None,
+            "current_session_reload_verified": False,
             "runtime_accepted": False,
         }
         with update_receipt_path.open("x", encoding="utf-8", newline="\n") as stream:
@@ -633,23 +695,30 @@ def update_mod(config_path: Path) -> dict:
             os.fsync(stream.fileno())
         os.replace(journal_temp, journal_path)
         return result
-    except Exception:
-        # Preserve both trees if rollback is incomplete; never delete either one.
+    except Exception as update_error:
+        # Preserve both trees and leave a terminal journal state on failure.
+        rollback_error = None
         try:
             if new_moved and target.exists() and not source.exists():
                 os.rename(target, source)
             if old_moved and backup.exists() and not target.exists():
                 os.rename(backup, target)
-        except OSError as rollback_error:
+        except OSError as exc:
+            rollback_error = exc
+        journal["error"] = str(update_error)[:500]
+        if rollback_error is None:
+            journal["status"] = "UPDATE_FAILED_ROLLED_BACK"
+            journal["rollback_complete"] = True
+        else:
             journal["status"] = "ROLLBACK_INCOMPLETE_PRESERVE_ALL"
             journal["rollback_error"] = str(rollback_error)[:500]
-            journal_temp = journal_path.with_name(journal_path.name + ".rollback")
-            with journal_temp.open("x", encoding="utf-8", newline="\n") as stream:
-                json.dump(journal, stream, ensure_ascii=False, indent=2)
-                stream.write("\n")
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(journal_temp, journal_path)
+        journal_temp = journal_path.with_name(journal_path.name + (".failed" if rollback_error is None else ".rollback"))
+        with journal_temp.open("x", encoding="utf-8", newline="\n") as stream:
+            json.dump(journal, stream, ensure_ascii=False, indent=2)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(journal_temp, journal_path)
         raise
 
 

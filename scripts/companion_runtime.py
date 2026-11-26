@@ -6,6 +6,7 @@ Its one-level location preserves the existing product/output-root calculation.
 from __future__ import annotations
 
 import ast
+import datetime
 import hashlib
 import json
 import os
@@ -15,6 +16,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import uuid
 
 from tool_paths import resolve_tool_root
 
@@ -248,7 +250,11 @@ def freeze_payload(sources, product=PRODUCT):
     target = product / binding["directory"]
     if target.exists():
         verify_payload(binding, product, sources=sources)
-        prune_stale_runtimes(product=product, keep_directories={binding["directory"]})
+        keep = {binding["directory"]}
+        current = _current_release_runtime(product)
+        if current and (product / current).is_dir():
+            keep.add(current)
+        prune_stale_runtimes(product=product, keep_directories=keep, keep_limit=len(keep))
         return binding
     stage = _mkdir_relative(product, "build/candidate/runtime-staging-" + digest)
     contents[MANIFEST] = raw
@@ -273,7 +279,11 @@ def freeze_payload(sources, product=PRODUCT):
         _need(_bytes(stage / name) == data, "RUNTIME_STAGE_CONFLICT")
     os.rename(stage, target)
     verify_payload(binding, product, sources=sources)
-    prune_stale_runtimes(product=product, keep_directories={binding["directory"]})
+    keep = {binding["directory"]}
+    current = _current_release_runtime(product)
+    if current and (product / current).is_dir():
+        keep.add(current)
+    prune_stale_runtimes(product=product, keep_directories=keep, keep_limit=len(keep))
     return binding
 
 
@@ -595,51 +605,60 @@ def active_runtime_directories(product=PRODUCT):
     return active
 
 
-def prune_stale_runtimes(product=PRODUCT, keep_directories=None, keep_limit=None, batch=None):
+def _current_release_runtime(product=PRODUCT):
+    release_path = Path(product) / "dist" / "H3TierExport-release.json"
+    if not release_path.is_file():
+        return None
+    try:
+        runtime_dir = (json.loads(release_path.read_bytes()).get("companion_runtime") or {}).get("directory")
+    except Exception:
+        return None
+    if isinstance(runtime_dir, str) and runtime_dir.startswith(".runtime-"):
+        return runtime_dir
+    return None
+
+
+def prune_stale_runtimes(product=PRODUCT, keep_directories=None, keep_limit=1, batch=None):
     """Safely remove unreferenced and stale .runtime-* directories from the product root.
 
-    Without keep_limit this keeps the original behaviour: only directories that no
-    release binding references are retired. keep_limit=N additionally caps the total
-    retained sidecars at N (the current release's own runtime first, then the most
-    recently written referenced ones), because every archived release JSON keeps
-    pointing at a live product-root directory and would otherwise pin one sidecar per
-    release forever.
+    Defaults to keep_limit=1 so only the current release's runtime (plus any explicit
+    keep_directories) is retained instead of accumulating one directory per archive.
     """
     product = Path(product)
-    active = active_runtime_directories(product)
-    if keep_directories:
-        active.update(keep_directories)
+    protected = {name for name in (keep_directories or ()) if (product / name).is_dir()}
+    active = active_runtime_directories(product) | protected
 
     present = [item for item in (product.iterdir() if product.is_dir() else [])
                if item.is_dir() and item.name.startswith(".runtime-") and not item.is_symlink()]
 
-    current = None
-    release_path = product / "dist" / "H3TierExport-release.json"
-    if release_path.exists():
-        try:
-            current = (json.loads(release_path.read_bytes()).get("companion_runtime") or {}).get("directory")
-        except Exception:
-            current = None
+    current = _current_release_runtime(product)
 
     over_limit = []
     if keep_limit is not None:
-        allowed = set()
-        if current and (product / current).is_dir():
+        allowed = set(protected)
+        if current and (product / current).is_dir() and (current in allowed or len(allowed) < int(keep_limit)):
             allowed.add(current)
         rest = sorted((item for item in present if item.name in active and item.name not in allowed),
                       key=lambda item: item.stat().st_mtime, reverse=True)
         allowed.update(item.name for item in rest[:max(0, int(keep_limit) - len(allowed))])
         over_limit = [item for item in present if item.name in active and item.name not in allowed]
 
+    to_retire = [p for p in present if p.name not in active] + over_limit
+    shared_batch = batch
+    if len(to_retire) > 1 and shared_batch is None and product.resolve() == PRODUCT.resolve():
+        shared_batch = Path("{VX-root}/H3美术素材/待删除") / (
+            "H3TierExport-runtime-prune-" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:8]
+        )
+
     removed = []
     detail = []
     kept = []
-    for item in [p for p in present if p.name not in active] + over_limit:
+    for item in to_retire:
         reason = ("unreferenced companion runtime" if item.name not in active
                   else "companion runtime above --keep limit")
         try:
             from retire_files import retire
-            retire(item, product, reason, batch=batch if over_limit else None)
+            retire(item, product, reason, batch=shared_batch)
             if not item.exists():
                 removed.append(item.name)
                 detail.append({"directory": item.name, "reason": reason})
@@ -648,7 +667,7 @@ def prune_stale_runtimes(product=PRODUCT, keep_directories=None, keep_limit=None
     return {"pruned": removed, "pruned_detail": detail,
             "kept": sorted(item.name for item in present if item.name not in removed),
             "keep_limit": keep_limit, "current_release_runtime": current,
-            "shared_batch": str(batch) if batch else None}
+            "shared_batch": str(shared_batch) if shared_batch else None}
 
 
 def main(argv=None):
@@ -656,18 +675,14 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Companion runtime manager and pruner.")
     parser.add_argument("--prune", action="store_true", help="Prune unreferenced .runtime-* directories.")
     parser.add_argument("--list", action="store_true", help="List active and stale runtime directories.")
-    parser.add_argument("--keep", type=int, default=None, metavar="N",
-                        help="With --prune: also cap retained sidecars at N (current release first).")
+    parser.add_argument("--keep", type=int, default=1, metavar="N",
+                        help="With --prune: cap retained sidecars at N (default 1, current release first).")
     parser.add_argument("--batch-name", default=None,
                         help="Directory name under the review area that holds all receipts for one --keep sweep.")
     args = parser.parse_args(argv)
 
     if args.prune or not (args.prune or args.list):
-        batch = None
-        if args.keep is not None:
-            import datetime as _dt
-            name = args.batch_name or ("H3TierExport-runtime-keep-sweep-" + _dt.datetime.now().strftime("%Y%m%d-%H%M%S"))
-            batch = Path("{VX-root}/H3美术素材/待删除") / name
+        batch = Path("{VX-root}/H3美术素材/待删除") / args.batch_name if args.batch_name else None
         print(json.dumps(prune_stale_runtimes(PRODUCT, keep_limit=args.keep, batch=batch), ensure_ascii=False, indent=2))
     elif args.list:
         active = active_runtime_directories(PRODUCT)

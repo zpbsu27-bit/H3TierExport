@@ -88,7 +88,9 @@ def measure(points, pixels):
 
 def resolve(manifest_ref, operation):
     manifest = doc(manifest_ref)
-    sequence_mode=manifest.get('schema')=='h3.creature.sequence-registration.manifest.v1'
+    sequence_mode=manifest.get('schema') in (
+        'h3.creature.sequence-registration.manifest.v1',
+        'h3.creature.sequence-registration.manifest.v2')
     need((manifest.get('schema') == SCHEMA or sequence_mode) and manifest.get('operation_id') == operation,
          'MANIFEST_SCHEMA_OR_OPERATION_MISMATCH')
     invpath, raw = pin(manifest['native_inventory'])
@@ -112,13 +114,19 @@ def resolve(manifest_ref, operation):
     items = manifest['items']
     output_layout=manifest.get('output_layout','native-crop')
     need(output_layout in ('native-crop','native-canvas'),'INVALID_OUTPUT_LAYOUT')
+    padding_mode = sequence_mode and manifest.get('padding_policy') is not None
+    if not sequence_mode:
+        need('padding_policy' not in manifest, 'PADDING_POLICY_SEQUENCE_ONLY')
     need(0 < len(expected) == len(manifest['expected_slots']) <= 1024, 'EXPLICIT_UNIQUE_SCOPE_REQUIRED')
     need(len(items) == len(expected) and {tuple(x['key']) for x in items} == expected,
          'EXACT_SCOPE_COVERAGE_MISMATCH')
     if sequence_mode:
         import creature_sequence_registration
         creature_sequence_registration.validate(manifest,profile,native,expected)
+        padding_root_tolerance = (creature_sequence_registration.PADDING_POLICY['root_tolerance_native']
+                                  if padding_mode else None)
     else:
+        padding_root_tolerance = None
         need(len({tuple(x['key'][:3]) for x in items}) == len(items),
              'STATIC_SLOTS_ONLY_USE_EXISTING_SEQUENCE_PIPELINE_FOR_ANIMATION')
     need(expected <= native.keys(), 'OFFICIAL_SLOT_NOT_FOUND')
@@ -142,6 +150,8 @@ def resolve(manifest_ref, operation):
             result.update(root_target_native_canvas=target,root_offset_native=item['root_offset_native'],
                           pose_group=rule['pose_group'],direction=rule['direction'],
                           crop_edge_contact_allowed=rule['clearance_native']==0)
+            if output_layout == 'native-crop':
+                result['root_target_native_crop'] = [target[0]-ox, target[1]-oy]
         if item.get('source') is None:
             result['reason'] = 'MISSING_HQ_MASTER'; results.append((result, None)); continue
         source = png(item['source']); box = source.getchannel('A').getbbox()
@@ -160,7 +170,61 @@ def resolve(manifest_ref, operation):
         tolerance = rule['primary_tolerance_fraction']; guard = rule['secondary_tolerance_fraction']
         need(0 < tolerance <= .15 and 0 < guard <= .35, 'BODY_TOLERANCE_OUT_OF_RANGE')
         allowed = []
+        if padding_mode:
+            registration = item['padding_registration']
+            k = registration['common_k']
+            offset = registration['offset']
+            deviation = {name: lengths[name] / k / targets[name] - 1 for name in lengths}
+            if (abs(deviation[primary]) > tolerance
+                    or any(abs(v) > guard for n, v in deviation.items() if n != primary)):
+                result.update(reason='PADDING_COMMON_K_BODY_TARGET_CONFLICT',
+                              common_k=k, padding_offset=offset,
+                              body_deviation_fraction=deviation)
+                results.append((result, None)); continue
+            # offset maps source pixel (0, 0) into the full native-canvas*K
+            # output. It is supplied by the frozen sequence owner; do not
+            # infer a per-frame fit or move the image after this point.
+            dx, dy = offset[0] - ox*k, offset[1] - oy*k
+            placed = [box[0]+dx, box[1]+dy, box[2]+dx, box[3]+dy]
+            canvas_pixels = [cw*k, ch*k]
+            canvas_bbox = [box[0]+offset[0], box[1]+offset[1],
+                           box[2]+offset[0], box[3]+offset[1]]
+            need(min(canvas_bbox[:2]) >= 0 and canvas_bbox[2] <= canvas_pixels[0]
+                 and canvas_bbox[3] <= canvas_pixels[1],
+                 'PADDING_POSITIVE_ALPHA_OUTSIDE_CANVAS')
+            alpha = source.getchannel('A')
+            core_box = alpha.point(lambda value: 255 if value >= 2 else 0).getbbox()
+            need(core_box is not None, 'PADDING_ALPHA_GE2_CORE_REQUIRED')
+            crop_bounds = [ox*k, oy*k, (ox+w)*k, (oy+h)*k]
+            core_output = [core_box[0]+offset[0], core_box[1]+offset[1],
+                           core_box[2]+offset[0], core_box[3]+offset[1]]
+            margin = rule['clearance_native'] * k
+            need(core_output[0] >= crop_bounds[0]+margin
+                 and core_output[1] >= crop_bounds[1]+margin
+                 and core_output[2] <= crop_bounds[2]-margin
+                 and core_output[3] <= crop_bounds[3]-margin,
+                 'PADDING_ALPHA_GE2_CORE_OUTSIDE_CROP_CLEARANCE')
+            source_crop = (max(0, min(source.width, crop_bounds[0]-offset[0])),
+                           max(0, min(source.height, crop_bounds[1]-offset[1])),
+                           max(0, min(source.width, crop_bounds[2]-offset[0])),
+                           max(0, min(source.height, crop_bounds[3]-offset[1])))
+            alpha_histogram = alpha.histogram()
+            inside_histogram = (alpha.crop(source_crop).histogram()
+                                if source_crop[2] > source_crop[0]
+                                and source_crop[3] > source_crop[1]
+                                else [0]*256)
+            core_outside = sum(alpha_histogram[2:]) - sum(inside_histogram[2:])
+            need(core_outside == 0, 'PADDING_ALPHA_GE2_PIXEL_OUTSIDE_CROP')
+            alpha1_outside = alpha_histogram[1] - inside_histogram[1]
+            body_root = [(anchor[i] + offset[i]) / k for i in (0, 1)]
+            root_error = [body_root[i] - target[i] for i in (0, 1)]
+            need(all(abs(value) <= padding_root_tolerance for value in root_error),
+                 'PADDING_ROOT_ALIGNMENT_EXCEEDS_ONE_NATIVE_UNIT')
+            allowed.append((0, k, dx, dy, placed, deviation))
+
         def consider(k):
+            if padding_mode:
+                return
             if (cw*ch if output_layout=='native-canvas' else w*h)*k*k > 64 * 1024 * 1024:
                 return
             deviation = {name: lengths[name] / k / targets[name] - 1 for name in lengths}
@@ -184,11 +248,12 @@ def resolve(manifest_ref, operation):
                 if (min(placed[:2])<margin or placed[2]>w*k-margin or placed[3]>h*k-margin):
                     return
             allowed.append((abs(math.log(k / desired_k)), k, dx, dy, placed, deviation))
-        for k in range(4,97):consider(k)
+        if not padding_mode:
+            for k in range(4,97):consider(k)
         # Keep existing integer results stable. If no integer works, a full
         # native canvas may use an exact rational density whose two dimensions
         # are still integral. Copying the source pixels remains lossless.
-        if not allowed and output_layout=='native-canvas':
+        if not padding_mode and not allowed and output_layout=='native-canvas':
             denominator=math.gcd(cw,ch)
             for numerator in range(4*denominator,96*denominator+1):
                 if numerator%denominator:consider(Fraction(numerator,denominator))
@@ -224,6 +289,13 @@ def resolve(manifest_ref, operation):
                       positive_alpha_bbox_output=placed, body_deviation_fraction=deviation,
                       anchor_rounding_error_native=[(anchor[i]+[dx,dy][i])/k+[ox,oy][i]-target[i] for i in (0,1)],
                       source_positive_alpha_preserved=True, output_name=f'{key[1]}/{key[2]}_{key[3]}.png')
+        if padding_mode:
+            result.update(common_k=k, padding_offset=offset,
+                          padding_root_error_native=root_error,
+                          positive_alpha_within_full_canvas=True,
+                          alpha_ge2_outside_native_crop_pixels=core_outside,
+                          alpha1_outside_native_crop_pixels=alpha1_outside,
+                          alpha_ge2_core_clearance_native=rule['clearance_native'])
         if exact_scale:result['editing_scale_exact']=exact_scale
         results.append((result, out))
     return manifest, profile, results
@@ -240,6 +312,9 @@ def brief(profile, results):
                   f"身体基准（原生单位）：{rule['lengths_native']}；接地点：{rule['anchor_native_canvas']}。",
                   f"原生画布/裁片/原点：{result['geometry']}。",
                   '若身体目标与装备边界不能同时满足，应在重绘时调整具体构图/装备姿态，不能缩小全人物来掩盖或裁掉边缘。', '']
+        if result.get('common_k') is not None:
+            lines[-1:-1] = [f"全组固定K：{result['common_k']}；透明留白偏移：{result['padding_offset']}；",
+                            f"根点误差（原生单位）：{result['padding_root_error_native']}；裁片外Alpha=1像素：{result['alpha1_outside_native_crop_pixels']}。"]
     return '\n'.join(lines)
 
 
@@ -249,7 +324,9 @@ def execute(action, manifest_ref, outdir, operation):
     need(root.parent == (PRODUCT/'build/experiments/scale-layout').resolve() and root.name == operation,
          'OUTPUT_MUST_BE_OWNED_NEW_SCALE_LAYOUT_OPERATION')
     manifest, profile, results = resolve(manifest_ref, operation)
-    sequence_mode=manifest.get('schema')=='h3.creature.sequence-registration.manifest.v1'
+    sequence_mode=manifest.get('schema') in (
+        'h3.creature.sequence-registration.manifest.v1',
+        'h3.creature.sequence-registration.manifest.v2')
     if sequence_mode and action=='run':
         need(all(image is not None for _,image in results),'SEQUENCE_FIT_CONFLICT_REVIEW_BEFORE_WRITING')
     for result, _ in results:
@@ -264,6 +341,8 @@ def execute(action, manifest_ref, outdir, operation):
                       anatomical_targets_and_root_trajectory_explicit=True,
                       body_semantics_automatically_recognized=False,
                       independent_per_frame_contain=False)
+        if manifest.get('padding_policy') is not None:
+            report['padding_policy'] = manifest['padding_policy']
     summary = dict(ready=sum(im is not None for _, im in results), needs_redraw=sum(im is None for _, im in results))
     if action == 'check':
         return {'status': 'CHECKED_WITHOUT_WRITING', **summary, 'items': report['items']}
@@ -330,7 +409,8 @@ def main(argv=None):
         if args.action == 'catalog':
             from art_batch_quality import PRESETS
             result = {'schema': SCHEMA, 'scope': 'explicit static slots or binary-bound complete creature action groups', 'pixels_resampled': False,
-                      'sequence_schema':'h3.creature.sequence-registration.manifest.v1',
+                      'sequence_schemas':['h3.creature.sequence-registration.manifest.v1',
+                                          'h3.creature.sequence-registration.manifest.v2'],
                       'sequence_stages':['sequence-check','sequence-run','sequence-verify'],
                       'quality_presets': PRESETS, 'quality_setup': 'quality-init / quality-freeze',
                       'needs': ['pinned HQ master', 'reviewed per-direction anatomical profile', 'source-bound manual landmarks'],
@@ -346,7 +426,8 @@ def main(argv=None):
                 result=art_batch_quality.execute(args.action,manifest_ref,args.outdir,args.operation_id)
             else:
                 result=execute(args.action,manifest_ref,args.outdir,args.operation_id)
-                if (manifest_schema=='h3.creature.sequence-registration.manifest.v1'
+                if (manifest_schema in ('h3.creature.sequence-registration.manifest.v1',
+                                        'h3.creature.sequence-registration.manifest.v2')
                         and args.action!='check' and not result.get('needs_redraw')):
                     import creature_sequence_registration
                     result.update(creature_sequence_registration.handoff(

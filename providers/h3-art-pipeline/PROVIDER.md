@@ -25,7 +25,7 @@ root must be below `build/experiments/art-pipeline`. For example:
 ```powershell
 python -B scripts/art_pipeline_provider.py run creature-art.def_extract.export `
   --work-root {H3TierExport}\build\experiments\art-pipeline\def-export-01 `
-  -- {H3-game}\Data\H3sprite.lod CREATURE.DEF --out `
+  -- D:\game\Data\H3sprite.lod CREATURE.DEF --out `
   {H3TierExport}\build\experiments\art-pipeline\def-export-01\reference
 ```
 

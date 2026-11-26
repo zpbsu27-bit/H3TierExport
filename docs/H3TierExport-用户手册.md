@@ -1,6 +1,6 @@
 # H3TierExport 中文用户手册
 
-版本：1.3.42（2026-11-11）  
+版本：1.3.64（2026-11-26）  
 适用对象：首次使用 H3TierExport 的美术、技术美术、素材维护者和测试人员。
 
 ## 1. 这个软件做什么
@@ -132,10 +132,31 @@ $env:H3_TIER_EXPORT_H3_ROOT = 'D:\Games\H3-Project'
   `H3TierExport.exe map-sprite-mod freeze --identity AH03_ --batch <expand-batch.json> --batch-sha256 <SHA> --verify-report <expand-verify.json> --verify-report-sha256 <SHA> --operation-id ah03-map-mod-r01 --candidate-root <build/experiments/新目录> --mod-id h3hd-map-ah03 --out <新请求.json>`
   冻结后用返回的请求 SHA 依次运行 `map-sprite-mod check --manifest <请求.json> --manifest-sha256 <SHA> --operation-id ah03-map-mod-r01`、`run`；最后 `verify --manifest <请求.json> --manifest-sha256 <SHA> --operation-id ah03-map-mod-r01 --receipt <回执.json> --receipt-sha256 <SHA>`。
 
+- `sprites3x-mod`：审计和重建静态结构循环的 VCMI `Sprites3x` 序列。它读取该身份的 JSON 帧映射、官方完整逻辑帧、以及通过 `static-structure-dynamic-fx-v2` 或 `static-base-dynamic-overlay-v1/v2`、`static-base-authored-fx-roi-v1` 和 `expand-verify` 的整组扩展批次。BASE 合同用于 VCMI `CShowableAnim::BASE` 消费者：先绘 frame 0，再叠当前 frame；v2 还核官方固定像素比例与逐帧 FX 尺寸/锚点。`check` 逐帧比较当前 MOD 与已验证的 full-canvas 3X 像素；缺帧、画布尺寸不同、可见像素不同、JSON 或来源漂移都会阻断并返回 `REPROCESS_REQUIRED`。运行 `run` 会从已验证扩展输出重建完整隔离 overlay 候选，再由 `verify` 逐字节回读；不会写入现有 MOD。
+  ```powershell
+  .\H3TierExport.exe sprites3x-mod freeze `
+    --identity TBSTHALL `
+    --sprites3x-root "{VX-root}\VCMI-branch-develop\Mods\h3hd-maptown\content\Sprites3x" `
+    --batch "<operation>\TBSTHALL-expand-batch.json" --batch-sha256 <SHA> `
+    --verify-report "<operation>\reports\TBSTHALL-expand-verify.json" --verify-report-sha256 <SHA> `
+    --operation-id tbsthall-sprites3x-r01 --outdir "<build>\experiments\tbsthall-sprites3x-r01"
+  .\H3TierExport.exe sprites3x-mod check --manifest "<operation>\sprites3x-reprocess.json" --manifest-sha256 <SHA> --operation-id tbsthall-sprites3x-r01
+  .\H3TierExport.exe sprites3x-mod run --manifest "<operation>\sprites3x-reprocess.json" --manifest-sha256 <SHA> --operation-id tbsthall-sprites3x-r01
+  .\H3TierExport.exe sprites3x-mod verify --manifest "<operation>\sprites3x-reprocess.json" --manifest-sha256 <SHA> --operation-id tbsthall-sprites3x-r01 --receipt "<operation>\candidate\sprites3x-reprocess-receipt.json" --receipt-sha256 <SHA>
+  ```
+
 - `plan / check / approve / run / verify`：冻结图片批次，核对来源与目标几何；用户必须为精确任务记录明确批准后，才可运行批准计划。
 - `expand-plan / expand-check / expand / expand-verify`：从已绑定的真实来源制作指定尺寸的扩展候选，并核验。扩展只是像素重采样，不产生新的绘画细节，不能把低倍率素材冒充高清母版。
-  - 静态建筑带动态特效的整组帧可在图形母版扩展设置中勾选“静态建筑 + 动态特效”，或为 CLI 加 `--animation-contract static-structure-dynamic-fx` 并在同一次 `expand-plan` 中重复 `--source` 列出整组帧。工具会按身份目录和 DEF 组号归组，使用首帧作锚点，对比各帧的母版 Alpha 框及压制后落点；3X 落点或宽高出现任何整数像素差，或拟合比例相差超过 0.1%，计划会被拒绝。错误会列出异常帧、首帧、母版 Alpha 框、原生参考轮廓框、3X 拟合框及 X/Y/宽高/比例差，并建议固定建筑框或为整组使用相同参考轮廓。`expand-check`、`expand` 和 `expand-verify` 会重算该合同，不能通过改批次绕过。
+  - **AH* 骑马英雄强制几何门**：CLI 与 GUI 的每次 `expand`、`expand-verify` 成功运行后，都会自动复核批次内全部 AH* 项。按内置 1999 DEF 逐帧几何要求输出为 RGBA `canvas×3`，并要求有效 Alpha 留在该帧 `origin×3` 起始的官方 `crop×3` 矩形内；crop×3 折叠、尺寸不符或 Alpha 越界会把整批标记为 `COMPLETED_WITH_FAILURES`。完整门禁回执和执行时的批次快照写到批次 `receipt_directory`，方便追溯 GUI/CLI 的结果。这个门只证明画布、原点/裁片范围与文件几何，不测马蹄的视觉接地点，也不检查地图对象访问方向、可走格或游戏内路径；这些要分开核对。
+  - 对需要抢救的旧 crop×3 输出，可单独运行 `hero-canvas-gate --mode run`，无重采样地补回官方 `canvas×3` 和 `origin×3`。若完整画布只在官方 crop 外出现最多 64 个、Alpha≤8 的滤波边缘像素，`run` 也可在新隔离目录清零这些越界 Alpha；任何更大/更实的越界仍失败关闭，要求定向检查。它不会覆盖导出结果、母版、正式 3X 或 MOD。自动导出门使用只读 `verify`。
+  - 静态底图加动态效果的整组帧必须使用 `static-structure-dynamic-fx-v2` 尺度门。GUI 帧集选择“完整动画：静态结构 + 动态效果”后必须选择官方原版 1X 帧目录；CLI 使用 `--animation-contract static-structure-dynamic-fx-v2 --reference-root <官方1X帧根目录>`，并在同一次 `expand-plan` 中重复 `--source` 列出完整组帧。目录按 `<身份>/<组_帧>.png` 对应实际槽位。计划冻结该官方目录中的完整帧名、尺寸和 SHA；官方帧漏列、额外来源帧、参考文件变化、空组、缺参考或少于两帧都会阻断。整组使用同一均匀变换，将来源帧可见联合包围 fit 到官方 1X 序列联合包围，之后检查各帧投影尺寸/比例和组内倍率跨度；不会逐帧 bbox-fit。底图必须在整组帧中共享至少 20% 的完全一致 RGBA 可见像素。动态 FX 尺寸变化按官方整组自然变化量作基线；母版宽/高变化幅度比官方额外超过 5 个百分点，或投影到共享 3X 槽位后的组均值锚点相对官方偏差超过画布的 5%时阻断。FX 尺寸和中心先经过本组同一均匀变换，再按原生画布比例与官方帧比较，避免高分辨率母版画布比例或透明布局造成假锚点漂移。这样保留官方烟雾、翅膀、水流变化，同时拦住静态本体呼吸和过量 FX 膨胀。回执列出完整帧清单、共享变换、每帧投影框、静态底图覆盖和 FX 组变化量。旧 `static-structure-dynamic-fx` 批次仅保留历史复验，新扩展计划必须改用 v2。
+  - **帧集必须先分类**：工具自动识别同身份下 `<组>_<帧>.png` 多帧组。CLI 可用 `--frame-set-classification single-or-unrelated-v1` 明确声明互不相关的单张图；该类别不允许同组多帧。检测到多帧而未选动画门或静态帧目录，会以 `MULTIFRAME_FRAME_SET_CLASSIFICATION_REQUIRED` 阻断计划；执行前复核也会再次阻断。遗漏帧若只有单张来源但官方参考目录包含多帧，同样阻断。
+  - **独立静态帧目录**：帧之间不构成“静态底图 + 动态特效”关系、但属于同一完整原生帧组的静态帧，使用 --frame-set-classification independent-static-frame-catalog-v1 --reference-root <官方1X帧根目录>。必须在同次计划中列全帧；允许某个官方组只有一个物理帧（例如 0_0），但来源和参考必须同名且完整；动画合同仍要求每组至少两帧。计划冻结每帧名称、尺寸和 SHA，并在 expand-check、expand、expand-verify 重核完整官方清单与每帧原生画布。此类别执行 95% 可见比例门：先按 alpha >= 1/32 比较母版相对画布的可见占比，并用导出器实际执行的“裁出母版可见框、等比例拟合到官方可见框”计算预计尺寸；来源可见占比或拟合后任一轴低于 95% 都会在 expand-plan 报 MASTER_VISIBLE_SCALE_TOO_SMALL。导出与复验阶段还会从真实 3X PNG 重新测 Alpha>=1/32 的可见框，并与官方 1X 可见框×3 比较；实际 3X 的宽或高低于 95% 就报 EXPANDED_VISIBLE_SCALE_TOO_SMALL，即使预估门通过也不能通过 expand-verify。缺参考根、缺策略、来源 SHA/参考帧漂移，以及旧策略计划的新 expand-check/expand 都失败关闭；旧计划只允许只读 expand-verify 历史回放，但仍须通过实际 3X 尺度门。一般单图 reference-root 保留原 80% fit 后尺寸底线，动画合同继续用各自的逐帧序列门。
+  - **固定底图 + 自定义动效区域**：历史合同使用 `static-base-authored-fx-roi-v1`；新底图需要清除原版特效或官方 frame0 的特效框不等于结构框时，选择 `static-base-authored-fx-roi-v2`。命令行均绑定同画布灰度 ROI PNG 和 SHA；v2 按 BASE 语义合成画面，并在源 ROI 与官方动态 ROI 以外核对静态结构几何。历史完整帧 ROI 批次使用 `static-composite-authored-fx-roi-v1` 回放。新完整帧序列（每帧本身是完整 cel）使用 `static-composite-authored-fx-roi-v2`：共享均匀变换先按源 ROI 与官方动态 ROI 外的静态结构求解，再应用到完整 cel；短烟或其他效果可以在 ROI 内移动而不把房体带大或压小。两类新合同都保留官方完整帧库存、统一注册变换、canvas/crop/origin、ROI 外变化、固定结构稳定、ROI 尺寸/锚点/亮度门。
   **母版只读**：扩展绝不裁切、补边、重绘或另存母版本身；必须等于"官方原生尺寸×目标倍率"的是**输出**，所以母版自身比例与官方槽位差 ≤5% 时，按官方尺寸输出并在收据里记 `fit_mode`/`aspect_error_pct`；差 >5% 说明这张母版不属于该槽位，仍然拒绝，必须先去 `scale-layout` 做真实几何注册。
+
+- `static-base-dynamic-overlay-v1`：用于 VCMI town `CShowableAnim::BASE` 建筑动画。引擎先绘制 frame 0，再叠绘当前 frame；frame 0 可包含静态房体与初始旗姿，后续帧可只含旗帜等动态 overlay。计划绑定官方完整帧清单与共同注册变换。几何门按 BASE 顺序合成实际场景；静态底图检查以 frame 0 原图对照后续合成场景，不把首帧自身重绘产生的微小 Alpha 变化当作房体变化；动态效果包络只测 frame 1+ 的 overlay 层并与官方对应 overlay 比较。源帧保持原样，3X 输出仍是完整 canvas；`sprites3x-mod` 只接受该版本的成功 expand-verify 报告。不得用于没有 BASE 叠绘语义的逐帧独立动画。
+- `static-base-dynamic-overlay-v2`：新版 VCMI BASE 门。frame 0 与当前帧按引擎顺序合成，固定像素比例以官方完整序列实测值为基准，允许官方本身低于 20% 的完整帧动画；母版固定像素比例若比官方低超过 5 个百分点会阻断；更稳定的底图允许。每个动态帧的效果尺寸和中心锚点逐帧与对应官方帧核对，任一宽、高或 X、Y 偏差超过画布 5% 会阻断。适用于底盘固定、云层/火焰/光效覆盖，以及官方本身提供完整当前帧的 BASE 序列。v1 继续用于历史批次复验。
   **只有一条质量通路**：扩展固定使用 `--filter h3-quality`（`linear-premultiplied-lanczos3-ewa-alpha-ar-clarity-v4`）。旧的低质量采样器 `linear-premultiplied-lanczos3-local-range-v1` 已不可选：`expand-plan --filter lanczos3` 直接拒绝，已封存该算法的旧批次在 `expand-check`/`expand` 下也整体失败、零写入；它只在 `expand-verify` 复核历史收据时按原算法回放，不产生新字节。
   **画布不许垫边**：比例门只看画布外框，看不见画占了多少。母版若"一轴两端都贴边（<0.5%）、另一轴两端各留 ≥2% 且两侧相差 ≤15%"，说明画布是被人为加宽/加高去凑比例的，输出会让画面在官方格子里缩水；`expand` 在解码之后、写盘之前直接拒绝且零写入，收据固定记 `artwork_bands_pct`（左/右/上/下留空比例）与 `padded_master_allowed`。阈值故意收紧：单侧留空、或两侧留空不对称（道路拐弯、山峰被槽位裁掉一边）属于正常构图，一律不拦。正确处置是重新派生母版、让画面铺满画布（把原画横向或纵向拉伸到目标比例即可，实测"拉伸再均匀压"与"一步非均匀压"只差 0.05/255，横向锐度到小数点后三位一致）；不要用补边或镜像——不规则轮廓镜像会连轮廓带投影复制一份，成品两侧会各出现一条接缝。确有理由照旧压制时用 `expand-plan --allow-padded-master`，该开关封进任务指纹，事后从批次里删掉它复核会报"expanded-master receipt missing"；已压制完成的历史批次因收据短路不受影响。
 - `native-review`：按官方槽位 canvas/crop/origin 显示候选和原生参考，生成诊断，不自动批准画面。
@@ -146,7 +167,7 @@ $env:H3_TIER_EXPORT_H3_ROOT = 'D:\Games\H3-Project'
 - **`scale-draft`**：按步兵、法师、骑乘单位、大型生物，从 SHA 绑定的原生 inventory 生成画前尺度草案。骑乘单位衡量骑手、坐骑、装备整体。没有核准样本或 landmarks 时显示 `DRAFT / NOT_MEASURED`，不猜目标尺寸。
 - **`scale-audit`**：制作后列出官方全槽缺漏、命名、母版 SHA、canvas/crop/origin、透明框、采样 K、绑定的解剖标点、正式 3X 与运行状态。bbox 只诊断留白/FIT，不代表身体尺寸，也不自动缩放。
 - **动作连续性复核**：`scale-audit` 可选绑定 SHA 锁定的 `h3.creature.motion-review.v1` 复核记录，验证帧顺序、所有相邻转场、loop/non-loop 分类、身份/解剖/装备/材质/动作逻辑条目以及风险说明是否完整、是否对应当前 PNG。它校验已填写的审阅记录，不从单帧自动识别动作含义。
-- **`scale-layout`**：处理人物序列无损注册、类别质量档案、道路批检和地图素材审核入口；如有问题的画面放不进原生槽，流程报告冲突，不靠单帧拉伸掩盖。
+- **`scale-layout`**：处理人物序列无损注册、类别质量档案、道路批检和地图素材审核入口；如有问题的画面放不进原生槽，流程报告冲突，不靠单帧拉伸掩盖。人物序列可按冻结清单选择统一整数K与逐帧透明留白偏移；工具只平移原像素，检查身体尺度、根点和原生裁片边界，不自动缩放或擦除边缘。具体字段见随工具提供的《生物尺度与动作序列工作流》。
 - **`blender-actions`**：按已绑定的模型、骨架、Action、相机和官方槽运行；声明 `motion_consistency` 后检查相机是否固定、刚性段尺度和逐槽 root 轨迹。没有合同则报告未测量。它不自动判定动作叙事、接触关系或游戏时序。
 - **`creature-production` / `creature-master-set` / `creature-actions`**：核对生物官方帧队列、来源、别名、导出和整组覆盖。归一化只产生工具隔离候选，母版原图保留。
 - **`sheet-intake` / `native-alias`**：整张帧图映射到官方槽位，或在真实二进制证据支持时复用别名。未知归属不能靠文件名猜。
@@ -195,15 +216,15 @@ $env:H3_TIER_EXPORT_H3_ROOT = 'D:\Games\H3-Project'
 ```powershell
 .\H3TierExport.exe map-object-sequence check `
   --manifest "<冻结manifest.json>" --manifest-sha256 <SHA> `
-  --outdir "{H3TierExport}\build\experiments\map-object-sequence\AVXBNK30-neck-idle-r03" `
+  --outdir "<H3TierExport>\build\experiments\map-object-sequence\AVXBNK30-neck-idle-r03" `
   --operation-id AVXBNK30-neck-idle-r03
 .\H3TierExport.exe map-object-sequence run `
   --manifest "<冻结manifest.json>" --manifest-sha256 <SHA> `
-  --outdir "{H3TierExport}\build\experiments\map-object-sequence\AVXBNK30-neck-idle-r03" `
+  --outdir "<H3TierExport>\build\experiments\map-object-sequence\AVXBNK30-neck-idle-r03" `
   --operation-id AVXBNK30-neck-idle-r03
 .\H3TierExport.exe map-object-sequence verify `
   --manifest "<冻结manifest.json>" --manifest-sha256 <SHA> `
-  --outdir "{H3TierExport}\build\experiments\map-object-sequence\AVXBNK30-neck-idle-r03" `
+  --outdir "<H3TierExport>\build\experiments\map-object-sequence\AVXBNK30-neck-idle-r03" `
   --operation-id AVXBNK30-neck-idle-r03
 ```
 
@@ -292,7 +313,7 @@ $env:H3_TIER_EXPORT_H3_ROOT = 'D:\Games\H3-Project'
 
 ```powershell
 .\H3TierExport.exe scale-audit freeze `
-  --inventory "D:\H3\H3HD\assets\CompleteOfficialRelease-20261006-v1\codex-map\native-resource-inventory.json.gz" `
+  --inventory "D:\H3\H3HD\assets\CompleteOfficialRelease-20261006-v1\codex-map\r\native-resource-inventory.json.gz" `
   --inventory-sha256 <官方inventory的SHA256> `
   --identity CGARCHER --category large_creature `
   --masters-dir "D:\H3\H3HD\assets\CompleteOfficialRelease-20261006-v1\codex-高清母版\生物\CGARCHER" `
@@ -321,7 +342,7 @@ $env:H3_TIER_EXPORT_H3_ROOT = 'D:\Games\H3-Project'
   --operation-id clrrvr-family-r01 --identity CLRRVR `
   --texture "D:\materials\clrrvr-water.png" `
   --bank-texture "D:\materials\cobble-bank.png" --bank-width-native 2 `
-  --inventory "D:\H3\H3HD\assets\CompleteOfficialRelease-20261006-v1\codex-map\native-resource-inventory.json.gz" `
+  --inventory "D:\H3\H3HD\assets\CompleteOfficialRelease-20261006-v1\codex-map\r\native-resource-inventory.json.gz" `
   --native-frame-root "D:\H3\H3HD\assets\CompleteOfficialRelease-20261006-v1\codex-map\sources\complete\frames" `
   --rule-proof "D:\H3\H3HD\docs\road-river-repair-20261025\river52-tool-repair-r01\seams-r01.json" `
   --seam-auditor "D:\H3\H3HD\tools\verify_map_tile_seams.py" `
@@ -355,7 +376,7 @@ $env:H3_TIER_EXPORT_H3_ROOT = 'D:\Games\H3-Project'
     $exe = Join-Path $tool 'dist\H3TierExport.exe'
     $helper = Join-Path $h3 'H3HD\tools\map_editor_h3m_review.py'
     $map = 'D:\maps\road-river-layout.h3m'
-    $inventory = Join-Path $h3 'H3HD\assets\CompleteOfficialRelease-20261006-v1\codex-map\native-resource-inventory.json.gz'
+    $inventory = Join-Path $h3 'H3HD\assets\CompleteOfficialRelease-20261006-v1\codex-map\r\native-resource-inventory.json.gz'
     $library = 'D:\maps\this-batch\final-library.json'
     $work = 'D:\maps\review-road-river-r01'
     $proof = Join-Path $work 'editor-layout-proof.json'
@@ -451,11 +472,11 @@ H3HD/tools/map_interface_final_delivery.py 不属于独立 H3TierExport 发行�
 
 ```powershell
 .\H3TierExport.exe town-master-prepare prepare `
-  --inventory "{H3-assets}\CompleteOfficialRelease-20261006-v1\codex-map\native-resource-inventory.json.gz" `
+  --inventory "{H3-assets}\CompleteOfficialRelease-20261006-v1\codex-map\r\native-resource-inventory.json.gz" `
   --inventory-sha256 <inventory SHA256> `
   --masters-root "{H3-assets}\CompleteOfficialRelease-20261006-v1\codex-高清母版\建筑" `
   --complete-frames-root "{H3-assets}\CompleteOfficialRelease-20261006-v1\codex-map\sources\complete\frames" `
-  --native-archive-root "{H3-assets}\CompleteOfficialRelease-20261006-v1\codex-map\sources\native-archive" `
+  --native-archive-root "{H3-assets}\CompleteOfficialRelease-20261006-v1\codex-map\sources\r\native-archive" `
   --outdir "{H3TierExport}\build\experiments\town-master-fit-r01"
 ```
 
@@ -498,7 +519,7 @@ H3TierExport 在此处执行唯一次重采样：linear-light、premultiplied-al
 # 1) 生成权威表（只读原生 LOD；H3HD/tools/build_native_1x_authority.py）
 # 2) 压制时用权威表定 1X 尺寸，不必再声明 --base-width/--base-height
 .\H3TierExport.exe expand-plan --source "<母版根>\界面\CSSARM\0_0.png" `
-  --target-scale 3 --native-authority "<资料库>\codex-map\contracts\build-inputs\native-1x-authority.json" `
+  --target-scale 3 --native-authority "<资料库>\codex-map\contracts\build-inputs\r\native-1x-authority.json" `
   --output-root <输出根> --out <批次.json>
 ```
 
@@ -567,8 +588,8 @@ H3TierExport.exe town-flag-alignment freeze `
   --source-root "{H3-assets}\CompleteOfficialRelease-20261006-v1\codex-高清母版\建筑" `
   --native-frames-root "{H3-assets}\CompleteOfficialRelease-20261006-v1\codex-map\sources\complete\frames" `
   --native-def-root "{H3-assets}\CompleteOfficialRelease-20261006-v1\codex-map\sources\complete\payloads" `
-  --sprite-flags-info "{H3-hd}\data\spriteFlagsInfo.txt" `
-  --flag-grey "{H3-hd}\data\flags\flag_grey.png" `
+  --sprite-flags-info "{VX-root}\Heroes of Might and Magic III HD Edition\data\spriteFlagsInfo.txt" `
+  --flag-grey "{VX-root}\Heroes of Might and Magic III HD Edition\data\flags\flag_grey.png" `
   --operation-id town-flag-alignment-r01 `
   --out "D:\path\to\town-flag-alignment-r01-request.json"
 ```

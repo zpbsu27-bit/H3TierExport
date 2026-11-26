@@ -41,6 +41,12 @@ def window(pid,klass):
   return True
  u.EnumWindows(visit,0);return result[0] if result else None
 
+def window_with_controls(pid,klass,controls):
+ def ready():
+  hwnd=window(pid,klass)
+  return hwnd if hwnd and all(u.GetDlgItem(hwnd,control) for control in controls) else None
+ return wait_for(ready)
+
 class QualityWizard(unittest.TestCase):
  def test_one_click_freezes_scope_and_reports_missing_frame(self):
   fixture=PRODUCT/'build/experiments/quality-ui-fixtures'/uuid.uuid4().hex;fixture.mkdir(parents=True)
@@ -55,7 +61,7 @@ class QualityWizard(unittest.TestCase):
    u.PostMessageW(main,0x111,1021,0)
    task=wait_for(lambda:window(proc.pid,'H3TierExport.TaskCenter'))
    u.PostMessageW(task,0x111,2213,0)
-   wizard=wait_for(lambda:window(proc.pid,'H3TierExport.QualityProfile'))
+   wizard=window_with_controls(proc.pid,'H3TierExport.QualityProfile',(2402,2403,2406,2407))
    for control,text in [(2402,str(masters)),(2403,'UNIT'),(2406,str(inventory)),(2407,str(standard))]:
     # SetWindowTextW across processes changes the caption cache, not the
     # Edit control's text buffer. WM_SETTEXT is system-marshalled correctly.

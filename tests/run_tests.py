@@ -88,9 +88,11 @@ def main():
       ["map-batch-synthesizer",sys.executable,"-B","-X","utf8",str(Path(__file__).parent/"map_batch_synthesizer_contract.py")],
       ["native-alias",sys.executable,"-B","-X","utf8",str(Path(__file__).parent/"native_alias_fixture_contract.py")],
       ["master-expansion",sys.executable,"-B","-X","utf8",str(Path(__file__).parent/"master_expansion_contract.py")],
+      ["hero-canvas-gate",sys.executable,"-B","-X","utf8",str(Path(__file__).parent/"hero_canvas_gate_contract.py")],
       ["motion-contract",sys.executable,"-B","-X","utf8",str(Path(__file__).parent/"motion_contract.py")],
       ["map-object-sequence",sys.executable,"-B","-X","utf8",str(Path(__file__).parent/"map_object_sequence_contract.py")],
       ["map-sprite-mod-packager",sys.executable,"-B","-X","utf8",str(Path(__file__).parent/"map_sprite_mod_packager_contract.py")],
+      ["sprites3x-mod-sync",sys.executable,"-B","-X","utf8",str(Path(__file__).parent/"sprites3x_mod_sync_contract.py")],
     ]
     results=[]
     env=os.environ.copy();env["H3TIEREXPORT_EXE"]=str(exe)

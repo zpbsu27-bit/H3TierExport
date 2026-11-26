@@ -25,12 +25,20 @@ def ref(p,pixels=None):
 
 
 def native_def():
-    raw=bytearray(struct.pack('<4I',66,60,60,1)+bytes(768))
+    raw=bytearray(struct.pack('<4I',66,60,60,2)+bytes(768))
+    # Two groups: group 1 frame 0 is an offset alias to group 0 frame 0.
+    group0_at=784
+    group0_size=16+3*13+3*4
+    group1_at=group0_at+group0_size
+    group1_size=16+2*13+2*4
+    offset=group1_at+group1_size
     raw+=struct.pack('<4I',0,3,0,0)
     raw+=b'A.pcx\0'.ljust(13,b'\0')+b'B.pcx\0'.ljust(13,b'\0')+b'A.pcx\0'.ljust(13,b'\0')
-    offset=len(raw)+12
     raw+=struct.pack('<3I',offset,offset+32,offset)
-    raw+=struct.pack('<6I2i',32,0,60,60,50,50,5,5)*2
+    raw+=struct.pack('<4I',1,2,0,0)
+    raw+=b'A.pcx\0'.ljust(13,b'\0')+b'C.pcx\0'.ljust(13,b'\0')
+    raw+=struct.pack('<2I',offset,offset+64)
+    raw+=struct.pack('<6I2i',32,0,60,60,50,50,5,5)*3
     return bytes(raw)
 
 
@@ -42,6 +50,10 @@ class SequenceRegistrationContract(unittest.TestCase):
         rows=[{'kind':'def','category':'creatures','identity':'TEST','group':0,'frame':i,
                'canvas':[60,60],'crop':[50,50],'anchor':[5,5],
                'resource':('B.pcx' if i==1 else 'A.pcx')} for i in range(3)]
+        rows.extend([{'kind':'def','category':'creatures','identity':'TEST','group':1,'frame':0,
+                      'canvas':[60,60],'crop':[50,50],'anchor':[5,5],'resource':'A.pcx'},
+                     {'kind':'def','category':'creatures','identity':'TEST','group':1,'frame':1,
+                      'canvas':[60,60],'crop':[50,50],'anchor':[5,5],'resource':'C.pcx'}])
         self.inventory=self.root/'inventory.json.gz'
         self.inventory.write_bytes(gzip.compress(json.dumps({'rows':rows}).encode()))
         self.standard=self.root/'standard.json';self.standard.write_text('{"version":"test"}')
@@ -50,6 +62,12 @@ class SequenceRegistrationContract(unittest.TestCase):
             im=Image.new('RGBA',(220,220));im.paste((90,120,200,255),(90,80,130,160))
             if wing:im.paste((20,80,240,255),(50,50,170,70))
             im.putpixel((89,100),(33,22,11,1));im.save(p)
+        self.native_guides=self.root/'TEST';self.native_guides.mkdir()
+        for frame in range(2):
+            guide=Image.new('RGBA',(60,60),(0,0,0,0));guide.paste((90,120,200,255),(20,10,40,50))
+            guide.save(self.native_guides/f'0_{frame}.png')
+        guide=Image.new('RGBA',(60,60),(0,0,0,0));guide.paste((90,120,200,255),(20,10,40,50))
+        guide.save(self.native_guides/'1_1.png')
         self.profile=self.root/'profile.json'
         self.pdata={'schema':layout.PROFILE,'review_status':'assistant_scale_profile_pass',
                     'replaces_canonical_art_standard':False,
@@ -87,6 +105,155 @@ class SequenceRegistrationContract(unittest.TestCase):
     def resolve(self):
         return layout.resolve(self.save(),'test-sequence')[2]
 
+    def upgrade_to_v2_native_crop(self):
+        self.data['schema']=sequence.SCHEMA_V2
+        self.data['output_layout']='native-crop'
+        contract=self.data['sequence_contract']
+        contract['schema']=sequence.CONTRACT_V2
+        contract['native_crop_origin_policy']='official_binary_def_origin_in_native_canvas_coordinates'
+        contract['root_motion_policy']={'0':'fixed'}
+        contract['appendage_contract']={
+            'schema':sequence.APPENDAGE_CONTRACT,'identity':'TEST',
+            'scope':'test humanoid standing frames',
+            'expected_counts':{'arms':2,'hands':2,'legs':2,'feet':2},
+            'required_skeleton_paths':{'left_arm':4,'right_arm':4,
+                                       'left_leg':5,'right_leg':5},
+            'required_connections':['arms_to_shoulders','hands_to_wrists',
+                                    'legs_to_pelvis','feet_to_ankles']}
+        for item in self.data['items']:
+            item['limb_review']={
+                'source_sha256':item['source']['sha256'],'reviewer':'assistant',
+                'status':'VISUALLY_REVIEWED',
+                'counts':{'arms':2,'hands':2,'legs':2,'feet':2},
+                'connections':{'arms_to_shoulders':'CONNECTED','hands_to_wrists':'CONNECTED',
+                               'legs_to_pelvis':'CONNECTED','feet_to_ankles':'CONNECTED'},
+                'skeleton_paths':{'left_arm':[[80,90],[90,100],[95,110],[100,115]],
+                                  'right_arm':[[140,90],[130,100],[125,110],[120,115]],
+                                  'left_leg':[[100,120],[95,130],[90,145],[90,165],[100,170]],
+                                  'right_leg':[[120,120],[125,130],[130,145],[130,165],[120,170]]}}
+            frame=item['key'][3]
+            item['root_trajectory_review']={
+                'key':item['key'],'source':ref(self.native_guides/f'0_{frame}.png',[60,60]),
+                'coordinate_space':'native_canvas_1x','method':'manual-official-1x-root-landmark',
+                'annotation_author':'assistant','status':'VISUALLY_REVIEWED',
+                'root_target_native_canvas':[30,40]}
+
+    def test_native_crop_uses_official_origin_and_keeps_canvas_root_targets(self):
+        self.upgrade_to_v2_native_crop()
+        rows=self.resolve()
+        for result,_ in rows:
+            self.assertEqual(result['root_target_native_canvas'],[30,40])
+            self.assertEqual(result['root_target_native_crop'],[25,35])
+            self.assertEqual(result['geometry']['origin_1x'],[5,5])
+            self.assertFalse(result['pixels_resampled'])
+
+    def test_native_crop_handoff_is_not_mislabelled_as_full_canvas(self):
+        self.upgrade_to_v2_native_crop();request=self.save()
+        with patch.object(layout,'PRODUCT',self.root):
+            out=self.root/'build/experiments/scale-layout/test-sequence'
+            layout.execute('run',request,out,'test-sequence')
+            rendered=json.loads(Path(sequence.handoff(request,out)['native_review_manifest']).read_bytes())
+            self.assertTrue(all(x['source_layout']=='native-crop' for x in rendered['items']))
+            self.assertTrue(all(x['output_layout']=='native-crop' and x['render_scales']==[3]
+                                for x in rendered['items']))
+
+    def test_native_crop_requires_explicit_origin_and_anatomy_contracts(self):
+        self.upgrade_to_v2_native_crop()
+        self.data['sequence_contract'].pop('native_crop_origin_policy')
+        with self.assertRaisesRegex(ValueError,'SEQUENCE_CROP_ORIGIN_POLICY_REQUIRED'):self.resolve()
+        self.upgrade_to_v2_native_crop()
+        self.data['items'][0]['limb_review']['source_sha256']='0'*64
+        with self.assertRaisesRegex(ValueError,'SEQUENCE_APPENDAGE_VISUAL_REVIEW_REQUIRED'):self.resolve()
+
+    def test_native_crop_blocks_limb_count_connection_and_idle_root_errors(self):
+        self.upgrade_to_v2_native_crop()
+        self.data['items'][0]['limb_review']['counts']['arms']=3
+        with self.assertRaisesRegex(ValueError,'SEQUENCE_APPENDAGE_COUNT_MISMATCH'):self.resolve()
+        self.upgrade_to_v2_native_crop()
+        self.data['items'][0]['limb_review']['connections']['feet_to_ankles']='UNCERTAIN'
+        with self.assertRaisesRegex(ValueError,'SEQUENCE_APPENDAGE_CONNECTION_UNRESOLVED'):self.resolve()
+        self.upgrade_to_v2_native_crop()
+        self.data['items'][0]['limb_review']['skeleton_paths'].pop('left_arm')
+        with self.assertRaisesRegex(ValueError,'SEQUENCE_SKELETON_PATH_SET_MISMATCH'):self.resolve()
+        self.upgrade_to_v2_native_crop()
+        self.data['items'][1]['root_offset_native']=[0,-1]
+        with self.assertRaisesRegex(ValueError,'SEQUENCE_FIXED_ROOT_MUST_NOT_MOVE'):self.resolve()
+
+    def test_fixed_root_requires_official_1x_landmark_at_the_shared_anchor(self):
+        self.upgrade_to_v2_native_crop()
+        self.data['items'][1].pop('root_trajectory_review')
+        with self.assertRaisesRegex(ValueError,'SEQUENCE_ROOT_TRAJECTORY_REVIEW_REQUIRED'):self.resolve()
+        self.upgrade_to_v2_native_crop()
+        self.data['items'][1]['root_trajectory_review']['root_target_native_canvas']=[31,40]
+        with self.assertRaisesRegex(ValueError,'SEQUENCE_ROOT_TRAJECTORY_TARGET_DIFFERS_FROM_LAYOUT'):self.resolve()
+
+    def test_native_crop_allows_sha_bound_cross_group_offset_aliases(self):
+        self.upgrade_to_v2_native_crop()
+        owner=json.loads(json.dumps(self.data['items'][1]))
+        owner['key']=['def','TEST',1,1]
+        owner['source']=ref(self.b,[220,220])
+        owner['measurement']['image_sha256']=owner['source']['sha256']
+        owner['limb_review']['source_sha256']=owner['source']['sha256']
+        owner['root_trajectory_review']['key']=owner['key']
+        owner['root_trajectory_review']['source']=ref(self.native_guides/'1_1.png',[60,60])
+        self.data['expected_slots']=[['def','TEST',1,1]]
+        self.data['items']=[owner]
+        contract=self.data['sequence_contract']
+        contract['groups']=[1]
+        contract['logical_scope']=[['def','TEST',1,0],['def','TEST',1,1]]
+        contract['root_motion_policy']={'1':'fixed'}
+        contract['aliases']=[{'key':['def','TEST',1,0],
+                              'owner_key':['def','TEST',0,0],
+                              'source':ref(self.a,[220,220]),
+                              'owner_source':ref(self.a,[220,220])}]
+        result=self.resolve()[0][0]
+        self.assertEqual(result['root_target_native_canvas'],[30,40])
+        self.assertEqual(result['root_target_native_crop'],[25,35])
+
+    def test_native_crop_rejects_unbound_external_alias_sources(self):
+        self.upgrade_to_v2_native_crop()
+        owner=json.loads(json.dumps(self.data['items'][1]));owner['key']=['def','TEST',1,1]
+        owner['source']=ref(self.b,[220,220]);owner['measurement']['image_sha256']=owner['source']['sha256']
+        owner['limb_review']['source_sha256']=owner['source']['sha256']
+        owner['root_trajectory_review']['key']=owner['key']
+        owner['root_trajectory_review']['source']=ref(self.native_guides/'1_1.png',[60,60])
+        self.data['expected_slots']=[['def','TEST',1,1]];self.data['items']=[owner]
+        contract=self.data['sequence_contract'];contract['groups']=[1]
+        contract['logical_scope']=[['def','TEST',1,0],['def','TEST',1,1]]
+        contract['root_motion_policy']={'1':'fixed'}
+        contract['aliases']=[{'key':['def','TEST',1,0],
+                              'owner_key':['def','TEST',0,0],
+                              'source':ref(self.a,[220,220])}]
+        with self.assertRaisesRegex(ValueError,'SEQUENCE_EXTERNAL_ALIAS_OWNER_UNBOUND'):self.resolve()
+
+    def test_explicit_root_requires_sha_bound_official_1x_native_landmarks(self):
+        self.upgrade_to_v2_native_crop()
+        self.data['sequence_contract']['root_motion_policy']={'0':'explicit'}
+        for index,item in enumerate(self.data['items']):
+            item['root_offset_native']=[index,0]
+            item['root_trajectory_review']={
+                'key':item['key'],'source':ref(self.native_guides/f'0_{index}.png',[60,60]),
+                'coordinate_space':'native_canvas_1x','method':'manual-official-1x-root-landmark',
+                'annotation_author':'assistant','status':'VISUALLY_REVIEWED',
+                'root_target_native_canvas':[30+index,40]}
+        rows=self.resolve()
+        self.assertEqual(rows[0][0]['root_target_native_canvas'],[30,40])
+        self.assertEqual(rows[1][0]['root_target_native_canvas'],[31,40])
+        self.data['items'][1].pop('root_trajectory_review')
+        with self.assertRaisesRegex(ValueError,'SEQUENCE_ROOT_TRAJECTORY_REVIEW_REQUIRED'):self.resolve()
+
+    def test_explicit_root_annotation_must_equal_frozen_offset(self):
+        self.upgrade_to_v2_native_crop()
+        self.data['sequence_contract']['root_motion_policy']={'0':'explicit'}
+        for index,item in enumerate(self.data['items']):
+            item['root_trajectory_review']={
+                'key':item['key'],'source':ref(self.native_guides/f'0_{index}.png',[60,60]),
+                'coordinate_space':'native_canvas_1x','method':'manual-official-1x-root-landmark',
+                'annotation_author':'assistant','status':'VISUALLY_REVIEWED',
+                'root_target_native_canvas':[30,40]}
+        self.data['items'][1]['root_offset_native']=[0,1]
+        with self.assertRaisesRegex(ValueError,'SEQUENCE_ROOT_TRAJECTORY_TARGET_DIFFERS_FROM_LAYOUT'):self.resolve()
+
     def test_wing_extent_does_not_change_body_scale_or_root(self):
         rows=self.resolve();a,b=[r for r,_ in rows]
         self.assertEqual(a['editing_scale'],b['editing_scale'])
@@ -106,6 +273,35 @@ class SequenceRegistrationContract(unittest.TestCase):
     def test_stale_alias_source_is_blocked(self):
         self.data['sequence_contract']['aliases'][0]['source']=ref(self.b,[220,220])
         with self.assertRaisesRegex(ValueError,'SEQUENCE_ALIAS_SOURCE_BYTES_DIFFER'):self.resolve()
+
+    def test_candidate_master_supports_operation_identity_subdirectory(self):
+        self.upgrade_to_v2_native_crop()
+        candidate_root=self.root/'build/experiments/creature-master-set'
+        source_path=candidate_root/'candidate-op'/'TEST'/'0_0.png'
+        source_path.parent.mkdir(parents=True)
+        Image.open(self.a).save(source_path)
+        source_ref=ref(source_path,[220,220])
+        self.data['items'][0]['source']=source_ref
+        self.data['items'][0]['measurement']['image_sha256']=source_ref['sha256']
+        self.data['items'][0]['limb_review']['source_sha256']=source_ref['sha256']
+        self.data['sequence_contract']['aliases'][0]['source']=source_ref
+        with patch.object(sequence,'CREATURE_MASTER_CANDIDATE_ROOT',candidate_root):
+            self.assertEqual(self.resolve()[0][0]['status'],'LOSSLESS_LAYOUT_READY')
+
+    def test_candidate_master_requires_exact_logical_png_name(self):
+        self.upgrade_to_v2_native_crop()
+        candidate_root=self.root/'build/experiments/creature-master-set'
+        source_path=candidate_root/'candidate-op'/'TEST'/'redraw.png'
+        source_path.parent.mkdir(parents=True)
+        Image.open(self.a).save(source_path)
+        source_ref=ref(source_path,[220,220])
+        self.data['items'][0]['source']=source_ref
+        self.data['items'][0]['measurement']['image_sha256']=source_ref['sha256']
+        self.data['items'][0]['limb_review']['source_sha256']=source_ref['sha256']
+        self.data['sequence_contract']['aliases'][0]['source']=source_ref
+        with patch.object(sequence,'CREATURE_MASTER_CANDIDATE_ROOT',candidate_root):
+            with self.assertRaisesRegex(ValueError,'SEQUENCE_CANDIDATE_OUTSIDE_MASTER_SET_OPERATION'):
+                self.resolve()
 
     def test_inventory_cannot_replace_binary_geometry(self):
         raw=json.loads(gzip.decompress(self.inventory.read_bytes()));raw['rows'][1]['anchor']=[6,5]

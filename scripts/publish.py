@@ -8,6 +8,7 @@ from companion_runtime import verify_payload, prune_stale_runtimes, BINDING_SCHE
 from retire_files import retire
 
 PRODUCT=Path(__file__).resolve().parents[1]
+_REAL_PRODUCT=PRODUCT
 BUILD=PRODUCT/"build"/"candidate"
 TESTS=PRODUCT/"build"/"test-results"/"tests.json"
 DIST=PRODUCT/"dist"
@@ -90,53 +91,27 @@ def publish_portable_runtime(binding,sources):
             "file_count":binding["file_count"],"bytes":binding["bytes"],"verified":True}
 
 def prune_stale_portable_runtime_copies(current_binding):
-    """Retire only portable sidecars not referenced by current or archived releases."""
-    verify_payload(current_binding,product=DIST)
-    referenced={current_binding["directory"]}
-    archive_root=DIST/"archive"
-    if archive_root.exists():
-        for archive in sorted(archive_root.iterdir(),key=lambda path:path.name):
-            if not archive.is_dir() or not archive.name.startswith("release-"):
-                continue
-            receipt=archive/RELEASE_RECEIPT
-            try:
-                raw=_archive_bytes(receipt,8*1024*1024)
-                if archive.name!="release-"+hashlib.sha256(raw).hexdigest():
-                    raise RuntimeError("ARCHIVE_RECEIPT_PATH_MISMATCH")
-                release=json.loads(raw)
-                binding=release.get("companion_runtime")
-                if (not isinstance(binding,dict)
-                        or binding.get("directory")!=".runtime-"+binding.get("manifest_sha256","")):
-                    raise RuntimeError("ARCHIVE_RUNTIME_BINDING_INVALID")
-                referenced.add(binding["directory"])
-            except Exception as error:
-                # An unreadable archive may be the only reference to a runtime.
-                # Retain all sidecars instead of guessing.
-                return {"retired":[],"kept":[{"directory":"*","reason":"archive scan blocked: "+str(error)}]}
+    """Retire all portable sidecars in dist except the current release's own binding."""
+    verify_payload(current_binding, product=DIST)
+    current_dir=current_binding["directory"]
+    candidates=[p for p in sorted(DIST.iterdir(),key=lambda path:path.name)
+                if p.is_dir() and p.name.startswith(".runtime-")]
+    stale=[p for p in candidates if p.name!=current_dir and not p.is_symlink()]
+    shared_batch=None
+    if len(stale)>1 and PRODUCT.resolve()==_REAL_PRODUCT.resolve():
+        shared_batch=Path("{VX-root}/H3美术素材/待删除")/("H3TierExport-portable-runtime-prune-"+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
     retired=[];kept=[]
-    for candidate in sorted(DIST.iterdir(),key=lambda path:path.name):
-        if not candidate.is_dir() or not candidate.name.startswith(".runtime-"):
+    for candidate in candidates:
+        if candidate.name==current_dir:
+            kept.append({"directory":candidate.name,"reason":"referenced by current release"})
             continue
-        if candidate.name in referenced:
-            kept.append({"directory":candidate.name,"reason":"referenced by current or archived release"})
-            continue
-        source=PRODUCT/candidate.name
-        if not source.is_dir():
-            kept.append({"directory":candidate.name,"reason":"no verified product-root fallback"})
+        if candidate.is_symlink():
+            kept.append({"directory":candidate.name,"reason":"symlink kept"})
             continue
         try:
-            portable_binding=_runtime_binding_at(candidate)
-            source_binding=_runtime_binding_at(source)
-            if portable_binding!=source_binding:
-                kept.append({"directory":candidate.name,"reason":"product-root binding differs"})
-                continue
-            verify_payload(portable_binding,product=DIST)
-            verify_payload(source_binding,product=PRODUCT)
-            target=retire(candidate,PRODUCT,"duplicate portable sidecar; matching frozen runtime remains in product root")
+            target=retire(candidate,PRODUCT,"superseded portable companion runtime",batch=shared_batch)
             retired.append({"directory":candidate.name,"moved_to":str(target)})
         except Exception as error:
-            # Cleanup is best-effort after a qualified release. Keep any uncertain
-            # sidecar in dist so an archive can still resolve its exact runtime.
             kept.append({"directory":candidate.name,"reason":str(error)})
     return {"retired":retired,"kept":kept}
 
@@ -303,10 +278,10 @@ def main(argv=()):
     if report.exists():retire(report,PRODUCT,"superseded release report")
     report.write_bytes(raw)
     atomic_copy(report,DIST/"H3TierExport-release.json")
-    prune_stale_runtimes(product=PRODUCT)
+    runtime_prune=prune_stale_runtimes(product=PRODUCT,keep_directories={build["companion_runtime"]["directory"]},keep_limit=1)
     portable_runtime_prune=prune_stale_portable_runtime_copies(build["companion_runtime"])
     print(json.dumps({"dist":str(DIST),"version":result["version"],"exe_sha256":exe_sha,"files":files,
                       "ui_controls":ui["controls"],"icon_resource":ui["icon_resource"],"gpu":info["gpu"].get("description"),
-                      "portable_runtime_prune":portable_runtime_prune,"real_art_exports":0},ensure_ascii=False))
+                      "runtime_prune":runtime_prune,"portable_runtime_prune":portable_runtime_prune,"real_art_exports":0},ensure_ascii=False))
     return 0
 if __name__=="__main__":sys.exit(main(sys.argv[1:]))

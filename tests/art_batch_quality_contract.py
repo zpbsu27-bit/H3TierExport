@@ -241,7 +241,11 @@ class BatchQualityContract(unittest.TestCase):
 
     def test_sequence_qa_and_ghost_free_stabilizer_contract(self):
         import creature_sequence_qa as cqa
-        raw_dir=self.root/'raw_unit';target_dir=self.root/'target_unit';backup_dir=self.root/'backup_batch'
+        raw_dir=self.root/'raw_unit';target_dir=self.root/'target_unit'
+        # Simulate the authorized art-trash root in this isolated test sandbox; never use the user's real archive.
+        art_trash_root=self.root/'test-art-trash';art_trash_root.mkdir(parents=True)
+        patcher=patch.object(cqa,'ART_TRASH_ROOT',art_trash_root);patcher.start();self.addCleanup(patcher.stop)
+        backup_dir=art_trash_root/'backup_batch'
         raw_dir.mkdir(parents=True)
         for i in range(5):
             im=Image.new('RGBA',(128,128),(0,0,0,0))

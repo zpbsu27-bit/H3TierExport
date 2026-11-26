@@ -72,7 +72,9 @@ void help(){std::cout<<"H3TierExport "<<VERSION<<R"( - x64 visual asset and anim
   H3TierExport.exe bench --outdir NEW-DIRECTORY --jobs 48 --backend hybrid --workers 16
   H3TierExport.exe expand-plan --source SOURCE.png [--source ...] --source-tier 3
                               [--target-scale 3] --output-root NEW-DIRECTORY --out NEW-batch.json
-                              [--animation-contract static-structure-dynamic-fx]
+                              [--animation-contract static-structure-dynamic-fx-v2|static-base-dynamic-overlay-v1|static-base-dynamic-overlay-v2|static-base-authored-fx-roi-v1|static-base-authored-fx-roi-v2|static-composite-authored-fx-roi-v1|static-composite-authored-fx-roi-v2]
+                              [--animation-roi-mask AUTHORED-FX-ROI.png]
+                              [--frame-set-classification single-or-unrelated-v1|independent-static-frame-catalog-v1]
                               [--mirror-source-root MASTER-ROOT] [--allow-padded-master]
                               [--reference-root NATIVE-1X-FRAMES] [--fit-anchor bottom_right|center]
                               [--native-authority NATIVE-1X-AUTHORITY.json]
@@ -88,12 +90,37 @@ void help(){std::cout<<"H3TierExport "<<VERSION<<R"( - x64 visual asset and anim
       official slot: the reference frame is REFERENCE-ROOT/<master folder>/<master file name>, its
       painted extent (alpha, minus a border-connected opaque matte equal to the frame corner) is the
       box, and the master artwork is uniformly resampled into that box without stretching or cropping
-      it. Use this for anything that shares a tile with other objects - a master that fills its canvas
+      it. Non-animation single/reference-root batches keep that 80% post-fit floor. For independent-static-frame-catalog-v1, each alpha box is compared as a fraction of its full source canvas with the matching official frame alpha box as a fraction of its full native canvas before any fit; either axis below 95% blocks with MASTER_VISIBLE_SCALE_TOO_SMALL, so uniform enlargement cannot hide a small source. The complete official frame root is mandatory. Use this for anything that shares a tile with other objects - a master that fills its canvas
       otherwise draws larger than the game ever did and covers the neighbouring tile.
-      For a static building with animated FX, pass every frame of one group in the same plan and
-      use --animation-contract static-structure-dynamic-fx. The preflight compares each frame's
-      fitted box to the first frame (zero output-pixel shift/size, 0.1% scale); drift blocks 3X
-      and names the frame, alpha box, fitted box, and exact delta.
+      For a static base with animated FX, pass every frame of one group and its official 1X reference
+      folder, then use --animation-contract static-structure-dynamic-fx-v2. The mandatory gate
+      registers a complete loop with one shared uniform transform, checks projected visible size/aspect,
+      the shared exact-pixel static base, inter-frame scale drift, excess FX breathing beyond the
+      official sequence envelope, the group-mean FX anchor, and exact source-frame coverage. Intentional
+      official smoke/wing/water changes are retained; excess size spread over the official sequence by
+      more than 5 percentage points or mean-anchor drift over 5 percent of the canvas blocks.
+      Missing or extra official frames, changed reference pixels, empty groups, and unmeasurable static
+      bases block export; legacy static-structure-dynamic-fx batches are verify-only.
+      For a VCMI BASE sequence with complete animated cels or partial overlays, use
+      static-base-dynamic-overlay-v2. It reproduces frame0+current-frame rendering, compares the
+      fixed-pixel fraction with the official native sequence, and blocks any FX frame whose size or
+      anchor differs from its corresponding official frame by more than 5 percent. Contract v1 remains
+      verify-only for historical batches.
+      When a user explicitly defines a new effect-only animation region over a VCMI BASE sequence, use
+      static-base-authored-fx-roi-v1 for legacy whole-scene geometry or static-base-authored-fx-roi-v2
+      when the official frame 0 contains an old effect that must be removed from the new static base.
+      v2 measures structure outside the union of the sealed source ROI and official native effect ROI.
+      For complete current-frame cels, keep v1 for historical replay and use static-composite-authored-fx-roi-v2
+      for new plans. v2 fits the shared transform from static structure outside authored and official effect
+      regions, then applies it to every full cel; only the sealed authored ROI may vary. All modes retain official frame inventory, shared
+      registration, ROI containment, structure size/aspect, fixed-base stability, effect-size/anchor
+      stability and frame-to-frame luminance pulse.
+      Any detectable multi-frame group blocks unless it declares one of the animation contracts or
+      independent-static-frame-catalog-v1. The latter binds and checks the exact official 1X frame
+      inventory and each frame's native slot geometry without treating the frames as animation.
+      Independent static-frame catalogs require a complete reference root, allow an official group with one physical frame, and check source coverage plus predicted post-fit width and height; either stage below 95% blocks with MASTER_VISIBLE_SCALE_TOO_SMALL. Stale pre-fit-only catalog plans are verify-only. Animation contracts still require at least two frames per group and retain their existing sequence gates.
+      --frame-set-classification single-or-unrelated-v1 is an explicit declaration for unrelated
+      stills; it does not permit a detected multi-frame sequence.
       Expansion always seals --filter h3-quality; the legacy local-range sampler cannot be selected
       and remains only to verify/replay receipts that were produced with it.
       A master whose artwork is centered inside a canvas widened to force an aspect is refused even
@@ -138,7 +165,7 @@ Legacy v4 motion batches remain exact3X. Every motion result is dependency-versi
 )";}
 int finish(Json result,const Args&a){
  if(a.has("--report"))write_json_new(path(a.get("--report")),result);
- std::cout<<result.dump(2)<<"\n";
+ std::cout<<result.dump(2)<<"\r\n";
  if(result.contains("failed")&&result["failed"]!=0)return 1;
  if(result.value("status","")=="NO_EXPORT_PREFLIGHT_BLOCKED_OR_PENDING")return 2;
  return 0;
@@ -191,7 +218,7 @@ int wmain(int argc,wchar_t**argv){
    auto options=native_review_cli_arguments(std::vector<std::string>(a.a.begin()+1,a.a.end()));
    auto report=render_native_review(path(options.at("--spec")),options.at("--spec-sha256"),
                                     path(options.at("--outdir")),native_review_executable_path());
-   std::cout<<report.dump(2)<<"\n";return 0;
+   std::cout<<report.dump(2)<<"\r\n";return 0;
   }
   if(command=="logical-alpha-render"){
    const std::set<std::string> allowed={"--spec","--spec-sha256","--outdir","--operation-id"};
@@ -208,7 +235,7 @@ int wmain(int argc,wchar_t**argv){
    for(const auto& name:allowed)need(options.contains(name),"LOGICAL_ALPHA_CLI_REQUIRED_ARGUMENT: "+name);
    auto report=render_logical_alpha(path(options.at("--spec")),options.at("--spec-sha256"),
                                    path(options.at("--outdir")),options.at("--operation-id"));
-   std::cout<<report.dump(2)<<"\n";return 0;
+   std::cout<<report.dump(2)<<"\r\n";return 0;
   }
   if(command=="map-artifact-check"||command=="map-artifact-export"||command=="map-artifact-verify"){
    const std::set<std::string> allowed={"--manifest","--manifest-sha256","--outdir","--report"};std::set<std::string> seen;
@@ -261,14 +288,17 @@ int wmain(int argc,wchar_t**argv){
    auto mirrorRoot=a.has("--mirror-source-root")?path(a.get("--mirror-source-root")):fs::path{};
    auto referenceRoot=a.has("--reference-root")?path(a.get("--reference-root")):fs::path{};
    auto nativeAuthority=a.has("--native-authority")?path(a.get("--native-authority")):fs::path{};
-   auto batch=make_expansion_batch(sources,number("--source-tier",0),number("--target-scale",3),{number("--base-width",0),number("--base-height",0)},path(a.get("--output-root")),a.get("--filter","h3-quality"),mirrorRoot,a.has("--allow-padded-master"),referenceRoot,a.get("--fit-anchor",""),nativeAuthority,a.get("--animation-contract",""));
+   auto animationRoiMask=a.has("--animation-roi-mask")?path(a.get("--animation-roi-mask")):fs::path{};
+   auto batch=make_expansion_batch(sources,number("--source-tier",0),number("--target-scale",3),{number("--base-width",0),number("--base-height",0)},path(a.get("--output-root")),a.get("--filter","h3-quality"),mirrorRoot,a.has("--allow-padded-master"),referenceRoot,a.get("--fit-anchor",""),nativeAuthority,a.get("--animation-contract",""),a.get("--frame-set-classification",""),animationRoiMask);
    write_json_new(path(a.get("--out")),batch);return finish({{"batch",a.get("--out")},{"items",batch["items"].size()},{"outputs_written",0},{"model_inference_performed",false}},a);
   }
   if(command=="expand-check"||command=="expand"||command=="expand-verify"){
    need(a.has("--batch"),"--batch required");need(!a.has("--backend")||a.get("--backend")=="cpu","master expansion uses CPU only");
-   auto batch=read_json(path(a.get("--batch")));auto settings=expansion_settings(overrides(batch.value("settings",default_settings()),a));
+   auto batchPath=clean_path(path(a.get("--batch")));auto batch=read_json(batchPath);auto settings=expansion_settings(overrides(batch.value("settings",default_settings()),a));
    if(command=="expand-check"){std::vector<ExpansionJob> jobs;auto r=check_expansion(batch,settings,jobs);r["failed"]=r["blocked"];return finish(r,a);}
-   return finish(run_expansion(batch,settings,command=="expand-verify"),a);
+   auto report=run_expansion(batch,settings,command=="expand-verify");
+   report=apply_mounted_hero_export_gate(batch,std::move(report));
+   return finish(report,a);
   }
   need(a.has("--plan"),"--plan required");auto p=clean_path(path(a.get("--plan")));auto plan=read_json(p);auto settings=overrides(settings_checked(plan),a);
   if(command=="approve"){need(a.has("--id")&&a.has("--evidence")&&a.has("--out"),"approve requires id, evidence, new output path");auto approved=seal_approval(plan,a.get("--id"),a.get("--evidence"));write_json_new(path(a.get("--out")),approved);return finish({{"approved_id",a.get("--id")},{"new_plan",a.get("--out")},{"tiers_written",0}},a);}
@@ -276,7 +306,7 @@ int wmain(int argc,wchar_t**argv){
   if(command=="run"||command=="verify")return finish(run_plan(plan,settings,command=="verify",legacyMultitierReplay),a);
   return companion_error("UNKNOWN_COMMAND","UNKNOWN_COMMAND","Unknown command: "+command);
  }catch(const std::exception&e){
-  Json r={{"status","FAILED"},{"error",e.what()}};std::cerr<<r.dump()<<"\n";
+  Json r={{"status","FAILED"},{"error",e.what()}};std::cerr<<r.dump()<<"\r\n";
   if(argc==1)MessageBoxW(nullptr,wide(e.what()).c_str(),L"H3TierExport error",MB_OK|MB_ICONERROR);
   return 1;
  }

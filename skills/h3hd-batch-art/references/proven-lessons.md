@@ -2,6 +2,13 @@
 
 此文件记录有原始图、冻结请求或运行收据支撑的决策。当前艺术标准由 H3 素材根下唯一的 `codex-高清母版/美术标准/town-art-direction-canonical.json` 持有；这里不另定第二套颜色或造型规范。新增结论先写明可复核的输入、结果和适用范围，再决定是否推广到其他品类。
 
+## 2026-11-13：VCMI Sprites3x 静态序列首帧漂移
+
+- 适用范围：完整逻辑画布的 VCMI `Sprites3x/<DEF>.json` 静态建筑循环；首帧或其它单帧在正式导出后被单独改动，stage 继续混用旧帧。
+- 观察：六个序列 `TBINDW_0`、`TBINCSTL`、`TBSTHALL`、`TBFRCAS3`、`TBFRTVRN`、`TBFRUP_6` 的当前母版分别通过 `static-structure-dynamic-fx` 几何合同，按原母版导出的候选也逐像素匹配正式 `codex-3X`；但 staging MOD 每组仅 `0_0` 对应 PNG 与正式 3X 不同，后续帧相同。`TBFRTVRN` 首帧还出现透明边界偏差。根因是 MOD 序列逐帧漂移，不能靠调 VCMI JSON 修复，也不需要先重绘母版。
+- 处理：新增 H3TierExport `sprites3x-mod` 门，冻结 Sprites3x descriptor、完整官方逻辑帧、带 `static-structure-dynamic-fx` 的 expand batch 和成功的 `expand-verify`；逐帧比较 staging 与已验证的 full-canvas 3X 来源。缺帧、尺寸或可见 RGBA 像素不同会让 `check` 返回 `REPROCESS_REQUIRED`；`run` 从冻结 expand 输出重新组装隔离候选，`verify` 再逐字节回读。它不安装或覆盖 MOD。
+- 已验证的来源证据：`build/experiments/tbindw-pulse-repair-20261113-r02/reports/TBINDW_0-expand-verify.json` SHA256 `743acfe19f3f6d25c415b6730c9f5b759ec1713645b285233b6516196739ec10`；同目录 `TBINCSTL-expand-verify.json` SHA256 `f355ad471963da122fe80500b80a784c43eaf677a05383d11cd6873936426b62`；`build/experiments/tbsthall-audit-20261113-r01/reports/expand-verify.json` SHA256 `37c0cf3db757d138d575b5ae0f1f24aefb2ad0d3d47bdef15a7fa29cd10bf0d3`；`build/experiments/tbfr-pulse-repair-20261113-r01/reports/TBFRCAS3-expand-verify.json` SHA256 `20a6e8ce69719d587b7e930d93b57ce840e446815aa91890c99beaf0877e67f6`；同目录 `TBFRTVRN-expand-verify.json` SHA256 `524a2cf1cca16d8fa60b44f7b3547ac7f669fc71b2f777f37941ef12ff02d9be`、`TBFRUP_6-expand-verify.json` SHA256 `b08e6aaec07ab5f32c441ac60cc752bf241e1b3a9ae9115fac8b02bf386a759d`。
+
 ## 2026-10-18：内置浏览器生图失败恢复与上传上限
 
 - 适用范围：内置浏览器 ChatGPT 的图片生成，不改变 H3TierExport 的本地导出合同。

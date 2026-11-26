@@ -62,6 +62,20 @@ class SequenceTemporalReview(unittest.TestCase):
         self.assertEqual([x['key'][3] for x in values], [0, 1, 2])
         self.assertEqual(values[0]['relative_to_reference'], values[2]['relative_to_reference'])
 
+    def test_v2_cross_group_alias_is_reported_as_external_and_excluded(self):
+        raw=sample();removed=raw['items'].pop()
+        raw['sequence_contract']['schema']='h3.creature.sequence-registration.contract.v2'
+        raw['sequence_contract']['aliases']=[{'key':removed['key'],
+            'owner_key':['def','TEST',5,0],
+            'owner_source':{'path':'D:/source/TEST_5_0.png','sha256':'a'*64,'pixels':[220,220]}}]
+        r=temporal.compare(raw,[],.50,.50,.25)
+        self.assertEqual(r['status'],'INCOMPLETE_EVIDENCE')
+        self.assertEqual(len(r['external_alias_dependencies']),1)
+        self.assertEqual(r['external_alias_dependencies'][0]['status'],'EXTERNAL_OWNER_NOT_IN_LAYOUT')
+        self.assertEqual([x['key'][3] for x in r['comparisons'][0]['values']],[0,1])
+        self.assertEqual(len(r['transitions']),1)
+        self.assertEqual(r['transitions'][0]['declared_root_step']['status'],'NO_NUMERIC_WARNING')
+
     def test_missing_metric_and_unselected_loop_are_not_silently_accepted(self):
         raw = sample()
         raw['items'][1]['body_deviation_fraction'] = {}

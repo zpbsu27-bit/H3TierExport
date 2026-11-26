@@ -301,8 +301,8 @@ void approve_selected(AppState&s){
  need(s.isPlan,"先打开 plan");int idx=selected_index(s);need(idx>=0,"先选择一个任务");
  auto id=s.current["jobs"][idx].at("id").get<std::string>();
  auto master=wide(s.current["jobs"][idx].at("master").get<std::string>());
- std::wstring prompt=L"批准："+wide(id)+L"\n\n母版：\n"+master+
-  L"\n\n这会绑定当前母版 SHA256 与 source/effective crop 合同。\n只有你已经亲自检查图像和裁片后才能继续。\n\n确认批准？";
+ std::wstring prompt=L"批准："+wide(id)+L"\r\n\r\n母版：\r\n"+master+
+  L"\r\n\r\n这会绑定当前母版 SHA256 与 source/effective crop 合同。\r\n只有你已经亲自检查图像和裁片后才能继续。\r\n\r\n确认批准？";
  if(MessageBoxW(s.window,prompt.c_str(),L"H3TierExport - 用户批准",MB_YESNO|MB_ICONWARNING|MB_DEFBUTTON2)!=IDYES)return;
  std::string evidence="User explicitly approved in H3TierExport GUI after reviewing master/crops; asset="+id+"; recorded="+now();
  auto approved=seal_approval(s.current,id,evidence);
@@ -315,8 +315,25 @@ void check_current(AppState&s){
  need(s.isPlan,"先打开 plan");std::vector<Job>valid;auto r=check_plan(s.current,ui_settings(s),valid);append_log(s,jsonw(r));refresh_list(s);
 }
 
+std::optional<fs::path> choose_native_reference_root(HWND owner){
+ wchar_t display[MAX_PATH]{};BROWSEINFOW info{};info.hwndOwner=owner;info.pszDisplayName=display;
+ info.lpszTitle=L"选择与母版目录结构对应的官方原版 1X 帧目录";
+ info.ulFlags=BIF_RETURNONLYFSDIRS|BIF_NEWDIALOGSTYLE;
+ PIDLIST_ABSOLUTE item=SHBrowseForFolderW(&info);if(!item)return std::nullopt;
+ wchar_t pathBuffer[MAX_PATH]{};BOOL ok=SHGetPathFromIDListW(item,pathBuffer);CoTaskMemFree(item);
+ if(!ok)return std::nullopt;return clean_path(fs::path(pathBuffer));
+}
+std::optional<fs::path> choose_animation_roi_mask(HWND owner){
+ wchar_t fileName[MAX_PATH]{};OPENFILENAMEW of{sizeof(of)};of.hwndOwner=owner;of.lpstrFile=fileName;of.nMaxFile=MAX_PATH;
+ of.lpstrFilter=L"灰度动态区域 PNG (*.png)\0*.png\0";of.lpstrTitle=L"选择与高清母版画布同尺寸的动态效果 ROI mask";
+ of.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
+ if(!GetOpenFileNameW(&of)){need(CommDlgExtendedError()==0,"ROI mask selection failed");return std::nullopt;}
+ return clean_path(fs::path(fileName));
+}
 struct ExpansionSetup {
- HWND window{},source{},target{},width{},height{},staticFx{};HFONT font{};bool done=false,accepted=false,staticStructureDynamicFx=false;
+ HWND window{},source{},target{},width{},height{},frameSetMode{},referenceRootEdit{},referenceBrowse{},roiMaskEdit{},roiMaskBrowse{};HFONT font{};
+ fs::path referenceRoot,animationRoiMask;bool done=false,accepted=false;
+ std::string animationContract,frameSetClassification=FRAME_SET_SINGLE_V1;
  int sourceTier=3,targetScale=3;std::array<int,2> base={300,300};
 };
 LRESULT CALLBACK expansion_setup_proc(HWND w,UINT message,WPARAM wp,LPARAM lp){
@@ -330,13 +347,57 @@ LRESULT CALLBACK expansion_setup_proc(HWND w,UINT message,WPARAM wp,LPARAM lp){
   control(L"STATIC",L"制作母版",0,20,62,145,26,2002);s->target=control(WC_COMBOBOXW,L"",CBS_DROPDOWNLIST,175,58,160,120,202);
   for(auto text:{L"标准3X（生产规格）",L"标准4X（历史兼容）"})SendMessageW(s->target,CB_ADDSTRING,0,(LPARAM)text);SendMessageW(s->target,CB_SETCURSEL,0,0);
   control(L"STATIC",L"原版1X宽 / 高",0,20,106,145,26,2003);s->width=control(L"EDIT",L"300",WS_BORDER|ES_NUMBER,175,102,100,26,203);s->height=control(L"EDIT",L"300",WS_BORDER|ES_NUMBER,295,102,100,26,204);EnableWindow(s->width,FALSE);EnableWindow(s->height,FALSE);
-  control(L"STATIC",L"同组图片共用原版宽高。CPU等比例处理，最大扩至输入边长的2倍。\n保留原PNG，输出到程序目录的新文件夹；新母版需要看图审核。",0,20,148,600,52,2004);
-  s->staticFx=control(L"BUTTON",L"静态建筑 + 动态特效：检查整组帧的建筑位置和尺寸一致",BS_AUTOCHECKBOX,20,210,610,26,207);
-  control(L"BUTTON",L"创建扩展批次",BS_DEFPUSHBUTTON,330,264,150,32,205);control(L"BUTTON",L"取消",BS_PUSHBUTTON,494,264,85,32,206);return 0;
+  control(L"STATIC",L"同组图片共用原版宽高。CPU等比例处理，最大扩至输入边长的2倍。\r\n保留原PNG，输出到程序目录的新文件夹；新母版需要看图审核。",0,20,148,600,52,2004);
+  s->frameSetMode=control(WC_COMBOBOXW,L"",CBS_DROPDOWNLIST,20,210,670,120,207);
+  for(auto text:{L"单张 / 互不相关的帧（检测到同组多帧会阻断）",
+                 L"完整动画：静态结构 + 动态效果（v2 几何门）",
+                 L"VCMI BASE：frame 0 底图 + 当前帧叠层（官方稳定区和逐帧特效尺寸门）",
+                 L"独立静态帧目录：完整官方帧集（允许单帧组）+95%门",
+                 L"VCMI BASE：固定底图 + 自定义动态区域（旧合同）",
+                 L"完整帧：用户指定动态 ROI（静态结构独立核验）",
+                 L"VCMI BASE：用户指定动态 ROI（结构区剔除官方旧特效）",
+                 L"完整帧：用户指定动态 ROI（按房体结构注册，完整帧保留）"})SendMessageW(s->frameSetMode,CB_ADDSTRING,0,(LPARAM)text);
+  SendMessageW(s->frameSetMode,CB_SETCURSEL,0,0);
+  control(L"STATIC",L"官方原版 1X 帧目录",0,20,248,145,26,2005);
+  s->referenceRootEdit=control(L"EDIT",L"",ES_AUTOHSCROLL|WS_BORDER,175,244,395,26,208);
+  s->referenceBrowse=control(L"BUTTON",L"浏览...",BS_PUSHBUTTON,580,242,90,30,209);
+  control(L"STATIC",L"动态 FX 区域 mask PNG",0,20,291,145,26,2011);
+  s->roiMaskEdit=control(L"EDIT",L"",ES_AUTOHSCROLL|WS_BORDER,175,287,395,26,210);
+  s->roiMaskBrowse=control(L"BUTTON",L"浏览...",BS_PUSHBUTTON,580,285,90,30,211);
+  control(L"STATIC",L"动画目录须有完整槽位；ROI 白色区可动，区外底图必须稳定。",0,175,319,520,22,2010);
+  control(L"BUTTON",L"创建扩展批次",BS_DEFPUSHBUTTON,390,360,150,32,205);control(L"BUTTON",L"取消",BS_PUSHBUTTON,555,360,85,32,206);return 0;
  }
  if(message==WM_COMMAND){
   if(LOWORD(wp)==201){bool custom=SendMessageW(s->source,CB_GETCURSEL,0,0)==2;EnableWindow(s->width,custom);EnableWindow(s->height,custom);return 0;}
-  if(LOWORD(wp)==205){try{int source=(int)SendMessageW(s->source,CB_GETCURSEL,0,0);s->sourceTier=source==0?3:source==1?2:0;s->targetScale=SendMessageW(s->target,CB_GETCURSEL,0,0)==0?3:4;if(!s->sourceTier)s->base={edit_int(s->width,1,MAX_AXIS,"original1X width"),edit_int(s->height,1,MAX_AXIS,"original1X height")};s->staticStructureDynamicFx=SendMessageW(s->staticFx,BM_GETCHECK,0,0)==BST_CHECKED;s->accepted=true;SendMessageW(w,WM_CLOSE,0,0);}catch(const std::exception& e){MessageBoxW(w,wide(e.what()).c_str(),L"请检查原版宽高",MB_OK|MB_ICONERROR);}return 0;}
+  if(LOWORD(wp)==209){auto chosen=choose_native_reference_root(w);if(chosen)settext(s->referenceRootEdit,chosen->wstring());return 0;}
+  if(LOWORD(wp)==211){auto chosen=choose_animation_roi_mask(w);if(chosen)settext(s->roiMaskEdit,chosen->wstring());return 0;}
+  if(LOWORD(wp)==205){try{
+   int source=(int)SendMessageW(s->source,CB_GETCURSEL,0,0);s->sourceTier=source==0?3:source==1?2:0;
+   s->targetScale=SendMessageW(s->target,CB_GETCURSEL,0,0)==0?3:4;
+   if(!s->sourceTier)s->base={edit_int(s->width,1,MAX_AXIS,"original1X width"),edit_int(s->height,1,MAX_AXIS,"original1X height")};
+   int mode=(int)SendMessageW(s->frameSetMode,CB_GETCURSEL,0,0);
+   s->animationContract.clear();s->frameSetClassification.clear();
+   if(mode==0)s->frameSetClassification=FRAME_SET_SINGLE_V1;
+   else if(mode==1)s->animationContract=ANIMATION_CONTRACT_V2;
+   else if(mode==2)s->animationContract=ANIMATION_CONTRACT_BASE_OVERLAY_V2;
+   else if(mode==3)s->frameSetClassification=FRAME_SET_STATIC_CATALOG_V1;
+   else if(mode==4)s->animationContract=ANIMATION_CONTRACT_BASE_AUTHORED_FX_V1;
+   else if(mode==5)s->animationContract=ANIMATION_CONTRACT_COMPOSITE_AUTHORED_FX_V1;
+   else if(mode==6)s->animationContract=ANIMATION_CONTRACT_BASE_AUTHORED_FX_V2;
+   else if(mode==7)s->animationContract=ANIMATION_CONTRACT_COMPOSITE_AUTHORED_FX_V2;
+   else need(false,"select a frame set type");
+   if(mode!=0){
+    auto value=wtext(s->referenceRootEdit);need(!value.empty(),"所选帧集门禁需要官方原版 1X 帧目录");
+    s->referenceRoot=clean_path(fs::path(value));need(fs::is_directory(s->referenceRoot),"官方原版 1X 帧目录不存在");
+   }
+   if(mode==4||mode==5||mode==6||mode==7){
+    auto roiValue=wtext(s->roiMaskEdit);need(!roiValue.empty(),"自定义动态区域门禁需要 ROI mask PNG");
+    s->animationRoiMask=clean_path(fs::path(roiValue));need(fs::is_regular_file(s->animationRoiMask),"动态效果 ROI mask 文件不存在");
+    need(s->animationRoiMask.extension()==L".png","动态效果 ROI mask 必须是 PNG");
+   }
+   if(mode==3)need(s->targetScale==3,"独立静态帧目录目前只允许制作正式 3X");
+   s->accepted=true;SendMessageW(w,WM_CLOSE,0,0);
+  }catch(const std::exception& e){MessageBoxW(w,wide(e.what()).c_str(),L"请检查扩展几何/动画门禁",MB_OK|MB_ICONERROR);}return 0;}
   if(LOWORD(wp)==206){SendMessageW(w,WM_CLOSE,0,0);return 0;}
  }
  if(message==WM_CLOSE){s->done=true;DestroyWindow(w);return 0;}
@@ -344,7 +405,7 @@ LRESULT CALLBACK expansion_setup_proc(HWND w,UINT message,WPARAM wp,LPARAM lp){
 }
 HWND create_expansion_setup(HWND owner,ExpansionSetup& setup,bool show){
  static std::once_flag once;std::call_once(once,[]{WNDCLASSW c{};c.lpfnWndProc=expansion_setup_proc;c.hInstance=GetModuleHandleW(nullptr);c.hCursor=LoadCursorW(nullptr,IDC_ARROW);c.hbrBackground=(HBRUSH)(COLOR_WINDOW+1);c.lpszClassName=L"H3TierExport.ExpansionSetup";need(RegisterClassW(&c)!=0,"register expansion setup");});
- auto w=CreateWindowExW(WS_EX_DLGMODALFRAME,L"H3TierExport.ExpansionSetup",L"母版扩展设置",WS_CAPTION|WS_SYSMENU|WS_POPUP,CW_USEDEFAULT,CW_USEDEFAULT,670,350,owner,nullptr,GetModuleHandleW(nullptr),&setup);need(w!=nullptr,"create expansion setup");center_window(w,owner);if(show){ShowWindow(w,SW_SHOW);SetFocus(setup.source);}return w;
+  auto w=CreateWindowExW(WS_EX_DLGMODALFRAME,L"H3TierExport.ExpansionSetup",L"母版扩展设置",WS_CAPTION|WS_SYSMENU|WS_POPUP,CW_USEDEFAULT,CW_USEDEFAULT,760,440,owner,nullptr,GetModuleHandleW(nullptr),&setup);need(w!=nullptr,"create expansion setup");center_window(w,owner);if(show){ShowWindow(w,SW_SHOW);SetFocus(setup.source);}return w;
 }
 void create_expansion(AppState& s){
  std::vector<wchar_t> buffer(65536);OPENFILENAMEW of{sizeof(of)};of.hwndOwner=s.window;of.lpstrFile=buffer.data();of.nMaxFile=(DWORD)buffer.size();of.lpstrFilter=L"原始 PNG (*.png)\0*.png\0";of.lpstrTitle=L"选择要制作标准母版的PNG（可以多选）";of.Flags=OFN_FILEMUSTEXIST|OFN_ALLOWMULTISELECT|OFN_EXPLORER|OFN_NOCHANGEDIR;
@@ -354,7 +415,7 @@ void create_expansion(AppState& s){
  ExpansionSetup setup;setup.font=s.font;auto w=create_expansion_setup(s.window,setup,true);EnableWindow(s.window,FALSE);MSG msg{};
  while(!setup.done){auto result=GetMessageW(&msg,nullptr,0,0);if(result<=0){setup.done=true;if(IsWindow(w))DestroyWindow(w);if(!result)PostQuitMessage((int)msg.wParam);break;}if(!IsDialogMessageW(w,&msg)){TranslateMessage(&msg);DispatchMessageW(&msg);}}
  EnableWindow(s.window,TRUE);SetActiveWindow(s.window);if(!setup.accepted)return;
- auto root=unique_path(module_path().parent_path()/(L"扩级母版-"+local_stamp()));auto batch=make_expansion_batch(sources,setup.sourceTier,setup.targetScale,setup.base,root,"h3-quality",{},false,{},"",{},setup.staticStructureDynamicFx?"static-structure-dynamic-fx":"");auto batchPath=root/L"master-expand-batch.json";write_json_new(batchPath,batch);load_document(s,batchPath);
+ auto root=unique_path(module_path().parent_path()/(L"扩级母版-"+local_stamp()));auto batch=make_expansion_batch(sources,setup.sourceTier,setup.targetScale,setup.base,root,"h3-quality",{},false,setup.referenceRoot,"",{},setup.animationContract,setup.frameSetClassification,setup.animationRoiMask);auto batchPath=root/L"master-expand-batch.json";write_json_new(batchPath,batch);load_document(s,batchPath);
 }
 
 void post_result(HWND w,std::wstring title,Json result,bool ok,fs::path reportDirectory={},bool showError=true){
@@ -385,7 +446,7 @@ void async_run(AppState&s,const std::wstring&label,bool verifyOnly){
  need(s.isPlan||s.isExpansion||s.isMotion,"先打开已冻结计划");need(!s.busy,"已有任务正在运行");
  bool expand=s.isExpansion,motion=s.isMotion;auto plan=s.current;auto settings=ui_settings(s);HWND w=s.window;set_busy(s,true);
  std::thread([w,plan=std::move(plan),settings=std::move(settings),verifyOnly,label,expand,motion](){
-  try{ComInit com;auto r=motion?run_motion(plan,motion_settings(settings),verifyOnly):expand?run_expansion(plan,expansion_settings(settings),verifyOnly):run_plan(plan,settings,verifyOnly);bool ok=r.value("failed",0)==0;post_result(w,label,r,ok);}
+  try{ComInit com;auto r=motion?run_motion(plan,motion_settings(settings),verifyOnly):expand?run_expansion(plan,expansion_settings(settings),verifyOnly):run_plan(plan,settings,verifyOnly);if(expand)r=apply_mounted_hero_export_gate(plan,std::move(r));bool ok=r.value("failed",0)==0;post_result(w,label,r,ok);}
   catch(const std::exception&e){post_result(w,label,Json{{"status","FAILED"},{"error",e.what()}},false);}
  }).detach();
 }
@@ -864,7 +925,7 @@ Json gui_smoke(HINSTANCE instance){
  need(GetDlgItem(w,IDC_CAPABILITIES)==s.capabilities&&wtext(s.capabilities)==CAPABILITIES_TITLE,
       "GUI must distinguish active production capabilities from planned video work");
  s.isMotion=true;set_busy(s,false);bool motionApprovalDisabled=!IsWindowEnabled(s.approve),motionPlanDisabled=!IsWindowEnabled(s.createPlan);need(motionApprovalDisabled&&motionPlanDisabled,"motion cannot grant approval/reseal current batch");s.isMotion=false;s.isMotionSpec=true;set_busy(s,false);need(!IsWindowEnabled(s.approve)&&IsWindowEnabled(s.createPlan),"motion spec sealing UI state");
- ExpansionSetup setup;setup.font=s.font;auto dialog=create_expansion_setup(w,setup,false);need(window_is_centered(dialog,w),"expansion setup must center on owner monitor");int setupControls=0;for(int id:{201,202,203,204,205,206,207})setupControls+=GetDlgItem(dialog,id)!=nullptr;SendMessageW(dialog,WM_CLOSE,0,0);need(setup.done&&setupControls==7,"expansion setup lifecycle");
+ ExpansionSetup setup;setup.font=s.font;auto dialog=create_expansion_setup(w,setup,false);need(window_is_centered(dialog,w),"expansion setup must center on owner monitor");int setupControls=0;for(int id:{201,202,203,204,205,206,207,208,209,210,211})setupControls+=GetDlgItem(dialog,id)!=nullptr;auto modes=(int)SendMessageW(GetDlgItem(dialog,207),CB_GETCOUNT,0,0);bool roiMaskControls=GetDlgItem(dialog,210)!=nullptr&&GetDlgItem(dialog,211)!=nullptr;SendMessageW(dialog,WM_CLOSE,0,0);need(setup.done&&setupControls==11&&modes==8&&roiMaskControls,"expansion setup lifecycle/frame-set choices");
  TaskCenterSetup task;task.font=s.font;auto taskWindow=create_task_center_window(w,task,false);int taskControls=0;for(int id:{IDC_TASK_KIND,IDC_TASK_STAGE,IDC_TASK_INPUT,IDC_TASK_BROWSE_INPUT,IDC_TASK_SHA,IDC_TASK_OUTPUT,IDC_TASK_BROWSE_OUTPUT,IDC_TASK_OPERATION,IDC_TASK_NOTE,IDC_TASK_START,IDC_TASK_CANCEL,IDC_TASK_OPEN_OUTPUT,IDC_TASK_QUALITY_PROFILE})taskControls+=GetDlgItem(taskWindow,id)!=nullptr;need(taskControls==13,"task-center controls missing");
  need(window_is_centered(taskWindow,w),"task center must start centered on owner monitor");
  need(task.kind!=nullptr&&GetDlgItem(taskWindow,IDC_TASK_KIND)==task.kind,
@@ -906,7 +967,8 @@ Json gui_smoke(HINSTANCE instance){
  auto icon=LoadIconW(instance,MAKEINTRESOURCEW(IDI_APP_ICON));need(icon!=nullptr,"embedded icon missing");
  DestroyWindow(w);
   auto defaultPlan=default_project_plan();
-  return{{"schema","h3.tier-export.ui-smoke.v1"},{"passed",true},{"controls",controls},{"expected_controls",23},{"task_center_controls",taskControls},{"shared_companion_route",true},{"task_root_resolved",true},{"task_tool_root",str(resolvedTaskRoot)},{"same_exe_cli_runner","companion_run_process"},{"unicode_path_quoted",true},{"new_task_routes",newTaskRoutes},{"review_task_routes",reviewTaskRoutes},{"standard_stages",Json::array({"check","run","verify"})},{"motion_approval_disabled",motionApprovalDisabled},{"motion_batch_reseal_disabled",motionPlanDisabled},{"expansion_setup_controls",setupControls},{"default_project_plan",str(defaultPlan)},{"icon_resource",true},{"files_written",0},{"main_window_centered",true},{"task_center_centered",true},{"expansion_setup_centered",true},{"capabilities_title",utf8(CAPABILITIES_TITLE)},{"window_title",utf8(APP_TITLE)},{"video_production_available",false}};
+  return{{"schema","h3.tier-export.ui-smoke.v1"},{"passed",true},{"controls",controls},{"expected_controls",23},{"task_center_controls",taskControls},{"shared_companion_route",true},{"task_root_resolved",true},{"task_tool_root",str(resolvedTaskRoot)},{"same_exe_cli_runner","companion_run_process"},{"unicode_path_quoted",true},{"new_task_routes",newTaskRoutes},{"review_task_routes",reviewTaskRoutes},{"standard_stages",Json::array({"check","run","verify"})},{"motion_approval_disabled",motionApprovalDisabled},{"motion_batch_reseal_disabled",motionPlanDisabled},{"expansion_setup_controls",setupControls},{"expansion_frame_set_modes",modes},{"expansion_reference_root_control",true},{"expansion_animation_roi_control",roiMaskControls},{"default_project_plan",str(defaultPlan)},{"icon_resource",true},{"files_written",0},{"main_window_centered",true},{"task_center_centered",true},{"expansion_setup_centered",true},{"capabilities_title",utf8(CAPABILITIES_TITLE)},{"window_title",utf8(APP_TITLE)},{"video_production_available",false}};
 }
 Json apng_selftest(){return apngui::selftest();}
 } // namespace h3tier
+
